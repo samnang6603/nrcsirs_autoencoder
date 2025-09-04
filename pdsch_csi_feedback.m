@@ -136,6 +136,20 @@ simParams.DelaySpread = 300e-9;     % s
 simParams.MaximumDopplerShift = 5;  % Hz
 simParams.Channel = createChannel(simParams);
 
+%% Processing Loop
+% Array to store the maximum throughput for all SNR points
+maxThroughput = zeros(length(simParameters.SNRIn),1); 
+% Array to store the simulation throughput for all SNR points
+simThroughput = zeros(length(simParameters.SNRIn),1);
+% Cell array to store CSI reports per SNR point
+CSIReport = {};
+
+for snrIdx = 1:length(simParams.SNRIn)
+
+    
+
+end
+
 %% Local Functions
 function cdmLengths = getCSIRSCDMLengths(csirs)
 cdm = csirs.CDMType;
