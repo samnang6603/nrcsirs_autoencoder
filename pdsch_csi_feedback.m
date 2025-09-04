@@ -134,7 +134,7 @@ simParams.BSProcessingDelay = 1;
 simParams.DelayProfile = 'TDL-C';   % 'CDL-' or 'TDL-'
 simParams.DelaySpread = 300e-9;     % s
 simParams.MaximumDopplerShift = 5;  % Hz
-simParams.Channel = createChannel(simParams);
+simParams.Channel = Channel.CreateChannel(simParams);
 
 %% Processing Loop
 % Array to store the maximum throughput for all SNR points
