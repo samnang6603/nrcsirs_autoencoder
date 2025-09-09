@@ -64,14 +64,65 @@ switch cbType
         PMISet.i2 = Nan(3,PMISubbandInfo,NumSubbands);
 end
 
+CQIPMICalcParams = struct();
+CQIPMICalcParams.Carrier = carrier;
+CQIPMICalcParams.CSIRS = csirs;
+CQIPMICalcParams.DMRSConfig = dmrsConfig;
+CQIPMICalcParams.ReportConfig = reportConfig;
+CQIPMICalcParams.Channel = H;
+CQIPMICalcParams.NoiseVariance = nVar;
+CQIPMICalcParams.PossibleRanks = possibleRanks;
+CQIPMICalcParams.PMISubbandInfo = PMISubbandInfo;
 
-
-
-
+if ~isempty(possibleRanks) && ~isempty(csirsInd)
+    if strcmpi(alg,'MaxSE')
+        [RI,PMISet] = calculateCQI(CQIPMICalcParams,PMISet);
+    else
+        [RI,PMISet] = calculatePMI(CQIPMICalcParams,PMISet);
+    end
+end
 
 
 
 end
+
+function [RI,PMISet] = calclateCQI(CQIPMICalcParams)
+carrier = CQIPMICalcParams.Carrier;
+csirs = CQIPMICalcParams.CSIRS;
+dmrsConfig = CQIPMICalcParams.DMRSConfig;
+reportConfig = CQIPMICalcParams.ReportConfig;
+H = CQIPMICalcParams.Channel;
+nVar = CQIPMICalcParams.NoiseVariance;
+possibleRanks = CQIPMICalcParams.PossibleRanks;
+PMISubbandInfo = CQIPMICalcParams.PMISubbandInfo;
+
+% Extract spectral efficiency from standard CQI table TS 38.211
+cqiTableName = ['CQI' reportConfig.CQITable];
+cqiTable = nrCQITables;
+spectralEfficiency = cqiTable.(cqiTableName).SpectralEfficiency;
+
+% Find the best CQI for each possible rank, then select the rank that
+% yields highest coding and modulation efficiencies
+maxRank = max(possibleRanks);
+pmi = 1:maxRank;
+efficiency = NaN(maxRank,1);
+for r = possibleRanks
+    % Find CQI and PMI for current rank
+    [cqi,pmi(r),cqiInfo] = s;
+
+
+
+end
+
+end
+
+
+
+
+
+
+
+
 
 function RIRestrictionVector = makeRIVector(reportConfig)
 % Validate and make RI vector with each element corresponds to the index of
