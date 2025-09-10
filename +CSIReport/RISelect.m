@@ -86,18 +86,14 @@ end
 
 end
 
-function [RI,PMISet] = calclateCQI(CQIPMICalcParams)
-carrier = CQIPMICalcParams.Carrier;
-csirs = CQIPMICalcParams.CSIRS;
-dmrsConfig = CQIPMICalcParams.DMRSConfig;
-reportConfig = CQIPMICalcParams.ReportConfig;
-H = CQIPMICalcParams.Channel;
-nVar = CQIPMICalcParams.NoiseVariance;
+function [RI,PMISet] = calculateCQI(CQIPMICalcParams)
+%calculateCQI - CQI Computation
+
 possibleRanks = CQIPMICalcParams.PossibleRanks;
-PMISubbandInfo = CQIPMICalcParams.PMISubbandInfo;
+
 
 % Extract spectral efficiency from standard CQI table TS 38.211
-cqiTableName = ['CQI' reportConfig.CQITable];
+cqiTableName = ['CQI' CQIPMICalcParams.ReportConfig.CQITable];
 cqiTable = nrCQITables;
 spectralEfficiency = cqiTable.(cqiTableName).SpectralEfficiency;
 
@@ -108,6 +104,7 @@ pmi = 1:maxRank;
 efficiency = NaN(maxRank,1);
 for r = possibleRanks
     % Find CQI and PMI for current rank
+    CQIPMICalcParams.ThisRank = r;
     [cqi,pmi(r),cqiInfo] = s;
 
 

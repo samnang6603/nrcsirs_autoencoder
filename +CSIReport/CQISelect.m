@@ -1,30 +1,110 @@
-function [CQI,PMISet,CQIInfo,PMIInfo] = CQISelect(carrier,CQIPMICalcParams,varargin)
-%CQISelect Calculates CQI
-
-[CQISubbandInfo,PMISubbandInfo] = getDLCSISubbandInfo(reportConfig);
+function [CQI,PMISet,CQIInfo,PMIInfo] = CQISelect(carrier,CQIPMICalcParams)
+%CQISelect Calculates CQI Based on the given CQI-PMI-RI configurations 
 
 % Get various parameters from CQIPMICalcParams
+% DMRS Config
 dmrsConfig = CQIPMICalcParams.DMRSConfig;
-csirs = CQIPMICalcParams.CSIRS;
-nTxAnts = unique(csirs.NumCSIRSPorts); % unique due to possibly more than one type of CSI-RS
 
+% CSI-RS
+csirs = CQIPMICalcParams.CSIRS;
+
+% Get CSI-RS Indices and nTxAnts
+csirsInd = getCSIRSIndices(csirs); % [sc, symbol, port]
+numTxAnts = unique(csirs.NumCSIRSPorts); % unique due to possibly more than one type of CSI-RS
+
+% Report Config
+reportConfig = CQIPMICalcParams.ReportConfig;
+
+% Allocate empty PRG Size if no PRG Size
+reportConfig.PRGSize = [];
+
+% Number of layer
+% This is directly tied to the rank indicated by the UE (RI). Since we sift
+% through each possible valid rank, the nLayer is defined by the current
+% rank we're on.
+numLayers = CQIPMICalcParams.ThisRank;
+
+% Get the channel matrix
+H = CQIPMICalcParams.Channel;
+
+% Get the Noise variance
+nVar = CQIPMICalcParams.NoiseVariance;
+
+% Allocate empty SINRTable
+SINRTable = [];
+inputSINRTable = 0;
+
+% Find the number of subbands and the size of each subband for the given
+% CQI and PMI configuration.
+[CQISubbandInfo,PMISubbandInfo] = getDLCSISubbandInfo(reportConfig);
+
+% Number of codewords
+% If nLayer > 4 -> 2 codewords
+numCodewords = ceil(numLayers/4);
+
+% Find the start of BWP relative to the carrrier
+bwpStart = reportConfig.NStartBWP - carrier.NStartGrid;
+
+% Calculate the SINR and CQI values
+% csirsInd = [subcarrier, symbol, port]
+csirsIndSubs_kTemp = csirsInd(:,1); % temp subcarrier indices
+csirsIndSubs_lTemp = csirsInd(:,2); % temp symbol indices
+
+% Only consider the CSI-RS indices inside the BWP
+% Since BWP is given in RBs, it has to be multiplied by NSC = 12 to
+% convert the BWP to effective sc units.
+% The CSI-RS to the right of the BWP is simply the region starting from the
+% BWP SC to the right
+csirsRightOfBWPStart = csirsIndSubs_kTemp >= bwpStart*12 + 1;
+
+% While the CSI-RS to the left of the BWP is simply the region starting
+% from the end of the BWPStart + BWPSize to the left
+csirsLeftOfBWPEnd  = csirsIndSubs_kTemp <= (bwpStart + reportConfig.NSizeBWP)*12;
+
+% Therefore, the intersection is the area where valid SCs containing CSI-RS
+% exist inside BWP
+indInsideBWP = csirsRightOfBWPStart & csirsLeftOfBWPEnd;
+
+% Update the subcarrier and symbol indices
+% Also convert the CSI-RS SCs subscripts to BWP scale
+csirsIndSubs_k = csirsIndSubs_ktemp(indInsideBWP) - bwpStart*12;
+csirsIndSubs_l = csirsIndSubs_ltemp(indInsideBWP);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+end
+
+function csirsInd = getCSIRSIndices(csirsConfig)
+% Get CSI-RS indices
 % Put CDM type in a cell (possibly more than 1)
-if iscell(csirs.CDMType)
-    cdmType = csirs.CDMType;
+if iscell(csirsConfig.CDMType)
+    cdmType = csirsConfig.CDMType;
 else
-    cdmType = {csirs.CDMType}; % if only 1
+    cdmType = {csirsConfig.CDMType}; % if only 1
 end
 
 % Ignore ZP CSI-RS because it is not used for CSI estimation
-if ~iscell(csirs.CSIRSType)
-    csirs.CSIRSType = {csirs,CSIRSType};
+if ~iscell(csirsConfig.CSIRSType)
+    csirsConfig.CSIRSType = {csirsConfig.CSIRSType};
 end
 
 % Find the number of resource taken by ZP
-numZP = sum(strcmpi(csirs.CSIRSType,'zp'));
+numZP = sum(strcmpi(csirsConfig.CSIRSType,'zp'));
 
 % Get CSI-RS indices
-tmpInd = nrCSIRSIndices(carrier,csirs,IndexStyle='subscript',...
+tmpInd = nrCSIRSIndices(carrier,csirsConfig,IndexStyle='subscript',...
     OutputResourceFormat='cell');
 % Chop off the ZP indices becausse nrCSIRSIndices return the ZP indices 
 % first, if any.
@@ -42,7 +122,7 @@ end
 if ~strcmpi(cdmType{1},'noCDM')
     for resourceIdx = 1:numel(tmpInd)
         totalIndices = size(tmpInd{resourceIdx},1);
-        switch cdmType1
+        switch cdmType{1}
             case 'FD-CDM2'
                 indPerSym = totalIndices;
             case 'CDM4'
@@ -60,13 +140,11 @@ if ~strcmpi(cdmType{1},'noCDM')
     end
 end
 
-
-
-
-
-
-
-
+if ~isempty(tempInd)
+    csirsInd = cell2mat(tempInd);
+else
+    csirsInd = [];
+end
 end
 
 function [cqiSubbandInfo,pmiSubbandInfo] = getDLCSISubbandInfo(reportConfig)
