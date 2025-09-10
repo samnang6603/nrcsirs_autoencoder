@@ -15,6 +15,58 @@ else
     cdmType = {csirs.CDMType}; % if only 1
 end
 
+% Ignore ZP CSI-RS because it is not used for CSI estimation
+if ~iscell(csirs.CSIRSType)
+    csirs.CSIRSType = {csirs,CSIRSType};
+end
+
+% Find the number of resource taken by ZP
+numZP = sum(strcmpi(csirs.CSIRSType,'zp'));
+
+% Get CSI-RS indices
+tmpInd = nrCSIRSIndices(carrier,csirs,IndexStyle='subscript',...
+    OutputResourceFormat='cell');
+% Chop off the ZP indices becausse nrCSIRSIndices return the ZP indices 
+% first, if any.
+tmpInd = tmpInd(numZP+1:end);
+
+% Extract the first port's NZP CSI-RS indices
+for nzpIdx = 1:numel(tmpInd) % number of NZP type
+    nzpInd = tmpInd{nzpIdx};
+    port1Ind = nzpInd(:,3) == 1; % first port indices only
+    tmpInd{nzpIdx} = nzpInd(port1Ind,:);
+end
+
+% Extract the indices with the lowest RE of each CDM group. This will limit
+% the number of CSI-RS REs and speed up computation
+if ~strcmpi(cdmType{1},'noCDM')
+    for resourceIdx = 1:numel(tmpInd)
+        totalIndices = size(tmpInd{resourceIdx},1);
+        switch cdmType1
+            case 'FD-CDM2'
+                indPerSym = totalIndices;
+            case 'CDM4'
+                indPerSym = totalIndices/2;
+            case 'CDM8'
+                indPerSym = totalIndices/4;
+            otherwise
+                error('Invalid CDM type')
+        end
+        tmpIndPerSym = tmpInd{resourceIdx}(1:indPerSym,:);
+        
+        % Downsample by 2 regardless of CDM type because we only need one 
+        % RE per CDM group to represent the group and to speed boost 
+        tmpInd{resourceIdx} = tmpIndPerSym(1:2:end,:);
+    end
+end
+
+
+
+
+
+
+
+
 end
 
 function [cqiSubbandInfo,pmiSubbandInfo] = getDLCSISubbandInfo(reportConfig)
