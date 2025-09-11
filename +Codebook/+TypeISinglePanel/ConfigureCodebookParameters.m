@@ -35,7 +35,7 @@ N1col = [2,2,4,3,6,4,8,4,6,12,4,8,16].';
 N2col = [1,2,1,2,1,2,1,3,2,1,4,2,1].';
 O1col = 4*ones(13,1);
 O2col = [1,4,1,4,1,4,1,4,4,1,4,4,1].';
-type1SinglePanelConfigTable = table(portcol,N1col,N2col,O1col,O2col,...
+Type1SinglePanelConfigTable = table(portcol,N1col,N2col,O1col,O2col,...
     VariableNames=["Port","N1","N2","O1","O2"]);
 
 % Get N1 and N2 from Panel Dimensions
@@ -54,13 +54,13 @@ N2 = reportConfig.PanelDimensions(2); % vertical
 nHEstCSIRSPorts = N1*N2*2;
 
 % Find the configuration index corresponding to N1 and N2
-N1ConfigIdx = type1SinglePanelConfigTable.N1 == N1;
-N2ConfigIdx = type1SinglePanelConfigTable.N2 == N2;
+N1ConfigIdx = Type1SinglePanelConfigTable.N1 == N1;
+N2ConfigIdx = Type1SinglePanelConfigTable.N2 == N2;
 configIdx = find(N1ConfigIdx & N2ConfigIdx,1); % return the first index that matches both
 
 % Then get the oversampling factors
-O1 = type1SinglePanelConfigTable.O1(configIdx);
-O2 = type1SinglePanelConfigTable.O2(configIdx);
+O1 = Type1SinglePanelConfigTable.O1(configIdx);
+O2 = Type1SinglePanelConfigTable.O2(configIdx);
 
 % Update reportConfig field
 reportConfig.OverSamplingFactors = [O1,O2];

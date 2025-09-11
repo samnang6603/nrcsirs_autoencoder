@@ -28,7 +28,7 @@ switch reportConfig.CodebookType
             % nHEstCSIRSPorts x numLayers x i2Len x i11Len x i12Len x i13Len
             % - OR -
             % nHEstCSIRSPorts x numLayers x i2Len
-            codebook = getPMIType1SinglePanelCodebook();
+            codebook = Codebook.TypeISinglePanel.ConfigureCodebookParameters();
         end
 end
 end
