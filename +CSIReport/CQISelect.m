@@ -70,8 +70,8 @@ indInsideBWP = csirsRightOfBWPStart & csirsLeftOfBWPEnd;
 csirsIndSubs_k = csirsIndSubs_ktemp(indInsideBWP) - bwpStart*12;
 csirsIndSubs_l = csirsIndSubs_ltemp(indInsideBWP);
 
-
-
+% PMI select using DLPMISelect()
+[PMISet,PMIInfo] = DLPMISelect(carrier,csirs,csirsInd,reportConfig,numLayers,H,nVar);
 
 
 
@@ -95,12 +95,12 @@ else
     cdmType = {csirsConfig.CDMType}; % if only 1
 end
 
-% Ignore ZP CSI-RS because it is not used for CSI estimation
 if ~iscell(csirsConfig.CSIRSType)
     csirsConfig.CSIRSType = {csirsConfig.CSIRSType};
 end
 
-% Find the number of resource taken by ZP
+% Ignore ZP CSI-RS because it is not used for CSI estimation
+% Find the number of resources occupied by ZP
 numZP = sum(strcmpi(csirsConfig.CSIRSType,'zp'));
 
 % Get CSI-RS indices
