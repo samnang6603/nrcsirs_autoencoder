@@ -37,12 +37,12 @@ nRxAnts = size(H,3);
 
 % Find max possible rank defined in TS 38.214 5.2.2.2.1 
 switch cbType
-    case 'Type1SinglePanel'
+    case 'TypeISinglePanel'
         % Max rank is 8 for this type
         maxRank = min([8,nPortCSIRS,nRxAnts]); % if RX or Port exceeds 8
-    case 'Type2'
+    case 'TypeII'
         maxRank = min(nRxAnts,2);
-    case {'EType2','Type1Multipanel'}
+    case {'ETypeII','TypeIMultipanel'}
         maxRank = min(nRxAnts,4);
     otherwise
         maxRank = min(nRxAnts,4);
