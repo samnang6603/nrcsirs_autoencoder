@@ -47,19 +47,19 @@ bwpStart = reportConfig.NStartBWP - carrier.NStartGrid;
 
 % Calculate the SINR and CQI values
 % csirsInd = [subcarrier, symbol, port]
-csirsIndSubs_kTemp = csirsInd(:,1); % temp subcarrier indices
-csirsIndSubs_lTemp = csirsInd(:,2); % temp symbol indices
+csirsIndSubs_kTmp = csirsInd(:,1); % temp subcarrier indices
+csirsIndSubs_lTmp = csirsInd(:,2); % temp symbol indices
 
 % Only consider the CSI-RS indices inside the BWP
 % Since BWP is given in RBs, it has to be multiplied by NSC = 12 to
 % convert the BWP to effective sc units.
 % The CSI-RS to the right of the BWP is simply the region starting from the
 % BWP SC to the right
-csirsRightOfBWPStart = csirsIndSubs_kTemp >= bwpStart*12 + 1;
+csirsRightOfBWPStart = csirsIndSubs_kTmp >= bwpStart*12 + 1;
 
 % While the CSI-RS to the left of the BWP is simply the region starting
 % from the end of the BWPStart + BWPSize to the left
-csirsLeftOfBWPEnd  = csirsIndSubs_kTemp <= (bwpStart + reportConfig.NSizeBWP)*12;
+csirsLeftOfBWPEnd  = csirsIndSubs_kTmp <= (bwpStart + reportConfig.NSizeBWP)*12;
 
 % Therefore, the intersection is the area where valid SCs containing CSI-RS
 % exist inside BWP
@@ -67,13 +67,11 @@ indInsideBWP = csirsRightOfBWPStart & csirsLeftOfBWPEnd;
 
 % Update the subcarrier and symbol indices
 % Also convert the CSI-RS SCs subscripts to BWP scale
-csirsIndSubs_k = csirsIndSubs_ktemp(indInsideBWP) - bwpStart*12;
-csirsIndSubs_l = csirsIndSubs_ltemp(indInsideBWP);
+csirsIndSubs_k = csirsIndSubs_kTmp(indInsideBWP) - bwpStart*12;
+csirsIndSubs_l = csirsIndSubs_lTmp(indInsideBWP);
 
 % PMI select using DLPMISelect()
 [PMISet,PMIInfo] = DLPMISelect(carrier,csirs,csirsInd,reportConfig,numLayers,H,nVar);
-
-
 
 
 

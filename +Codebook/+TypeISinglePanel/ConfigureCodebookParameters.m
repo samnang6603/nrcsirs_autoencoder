@@ -1,5 +1,5 @@
 function reportConfig = ConfigureCodebookParameters(reportConfig)
-%getTypeISinglePanelCodebook Configure panel for type I single-panel
+%ConfigureCodebookParameters Configure panel for type I single-panel
 %codebook. 
 % 
 %
@@ -42,16 +42,8 @@ Type1SinglePanelConfigTable = table(portcol,N1col,N2col,O1col,O2col,...
 N1 = reportConfig.PanelDimensions(1); % horizontal
 N2 = reportConfig.PanelDimensions(2); % vertical
 
-% nEstCSIRSPorts (a.k.a. Pcsirs in original example):
-%   Number of CSI-RS ports represented in the estimated channel matrix H.
-%   This is determined by the CSI-RS resources actually simulated/received.
-%
-%   Note: Do NOT confuse with 'NumCSIRSPorts' from CSI-RS configuration.
-%   - NumCSIRSPorts: Comes directly from 3GPP config (row number in TS 38.211/38.331).
-%   - nHEstCSIRSPorts: The *dimension in H* (K x L x nRxAnts x nEstCSIRSPorts),
-%     i.e., how many CSI-RS Tx ports your simulation/estimator actually included.
-% TL;DR: NumCSIRSPorts = config; nEstCSIRSPorts = reality in H.
-nHEstCSIRSPorts = N1*N2*2;
+% PCSIRS (CSI-RS port)
+Pcsirs = N1*N2*2;
 
 % Find the configuration index corresponding to N1 and N2
 N1ConfigIdx = Type1SinglePanelConfigTable.N1 == N1;

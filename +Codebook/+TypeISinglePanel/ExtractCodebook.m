@@ -1,4 +1,4 @@
-function [codebook,codebookSize] = ComputePMI(reportConfig,Pscirs,numLayers)
+function [codebook,codebookSize] = ExtractCodebook(reportConfig,Pscirs,numLayers)
 %COMPUTEPMI Calculate PMI and get the codebook for Type I single-panel
 %codebook.
 
