@@ -22,6 +22,12 @@ subbandInfo = CSIReport.DLPMISubbandInfo(carrier,reportConfig);
 % Allocate NaN for PMI and get the information
 [PMINaNSet,nanInfo] = allocatePMINaN(reportConfig,subbandInfo,codebook,codebookIdxSetSizes,csirs.numCSIRSPorts,numLayers,csirsIndBWP_k);
 
+% Compute PMI
+Htmp = reshape(Hbwp,[],size(Hbwp,3),size(Hbwp,4));
+Hcsirs = Htmp(csirsIndBWP_k+(csirsIndBWP_l-1)*size(H_bwp,3),:,:);
+SINRPerRE = CSIReport.ComputePrecodedSINRPerRE(Hcsirs,codebook,...
+    codebookIdxSetSizes,nVar,csirsIndBWP_k,numLayers);
+
 
 
 
@@ -120,7 +126,7 @@ p = ones(size(k)); % only the first CSI-RS port matters
 
 % Channel estimate inside the BWP
 % Only change the k index range w.r.t carrier
-Hbwp = H(bwpStart*12 + 1: (bwpStart + reportConfig.NSizeBWP)*12,:,:,:);
+Hbwp = H(bwpStart*12 + 1:(bwpStart + reportConfig.NSizeBWP)*12,:,:,:);
 
 end
 
@@ -146,10 +152,5 @@ if contains(reportConfig.CodebookType,'TypeI')
     nanInfo.Codebook = codebook;
     nanInfo.W = NaN(numCSIRSPorts,nLayers);
 end
-
-end
-
-function SINRPerRE = computeSINRPerRE(Hcsirs,codebook,nVar,csirsIndBWP_k,...
-    codebookIdxSetSizes)
 
 end

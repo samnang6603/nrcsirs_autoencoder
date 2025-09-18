@@ -16,7 +16,7 @@ end
 cbType = reportConfig.CodebookType;
 
 % Get CSI-RS indices
-csirsInd = nrCSIRSIndices(carrier, csirs,IndexStyle="subscript");
+csirsInd = nrCSIRSIndices(carrier,csirs,IndexStyle="subscript");
 
 % Update BWP and Total RBs from carrier
 reportConfig.NStartBWP = carrier.NStartGrid;
