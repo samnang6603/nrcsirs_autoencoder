@@ -17,16 +17,33 @@ reportConfig = Codebook.TypeISinglePanel.ConfigureCodebookParameters(reportConfi
 subbandInfo = CSIReport.DLPMISubbandInfo(carrier,reportConfig);
 
 % Get CSI-RS indices inside BWP
-[H_bwp,csirsIndBWP_k,csirsIndBWP_l,csirsIndBWP_p] = getInsideBWPComponents(carrier,reportConfig,H,csirsIndSubs);
+[H_bwp,csirsIndBWP_k,csirsIndBWP_l,csirsIndBWP_p] = getInsideBWPComponents(carrier,...
+    reportConfig,H,csirsIndSubs);
 
 % Allocate NaN for PMI and get the information
-[PMINaNSet,nanInfo] = allocatePMINaN(reportConfig,subbandInfo,codebook,codebookIdxSetSizes,csirs.numCSIRSPorts,numLayers,csirsIndBWP_k);
+[PMINaNSet,nanInfo] = allocatePMINaN(reportConfig,subbandInfo,codebook,...
+    codebookIdxSetSizes,csirs.numCSIRSPorts,numLayers,csirsIndBWP_k);
 
 % Compute PMI
 Htmp = reshape(Hbwp,[],size(Hbwp,3),size(Hbwp,4));
 Hcsirs = Htmp(csirsIndBWP_k+(csirsIndBWP_l-1)*size(H_bwp,3),:,:);
 SINRPerRE = CSIReport.ComputePrecodedSINRPerRE(Hcsirs,codebook,...
     codebookIdxSetSizes,nVar,csirsIndBWP_k,numLayers);
+[PMISet,W,SINRPerREPMI,subbandSINRs] = Codebook.TypeISinglePanel.SetPMIWideband(SINRPerRE,...
+    codebook,codebookIdxSetSizes);
+
+% Get number of subbands
+numSubbands = subbandInfo.NumSubbands;
+if numSubbands > 1
+    switch reportConfig.CodebookType
+        case {'TypeISinglePanel','TypeIMultiPanel'}
+            [PMISet,W,SINRPerREPMI,subbandSINRs] = SetTypeIPMISubband(carrier,...
+                codebook,PMISet,SINRPerRE,subbandInfo,...
+                codebookIdxSetSizes,numLayers,k,l)
+        case {'TypeII','eTypeII'}
+    end
+end
+
 
 
 

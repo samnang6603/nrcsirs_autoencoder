@@ -44,6 +44,7 @@ N2 = reportConfig.PanelDimensions(2); % vertical
 
 % PCSIRS (CSI-RS port)
 Pcsirs = N1*N2*2;
+reportConfig.Pcsirs = Pcsirs;
 
 % Find the configuration index corresponding to N1 and N2
 N1ConfigIdx = Type1SinglePanelConfigTable.N1 == N1;

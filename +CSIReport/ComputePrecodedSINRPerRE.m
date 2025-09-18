@@ -15,6 +15,7 @@ if csirsIndSubsLen < numElemIdxSet
 
 else
     for idx = 1:numElemIdxSet
+        % Check if all elements are zeros
         if any(codebook(:,:,idx),'all')
             % Compute linear SINR of all RE that contains CSI-RS per precoding
             % matrix
