@@ -19,6 +19,9 @@ These are the premises of this experiment:
 % 3. https://www.sharetechnote.com/html/5G/5G_CSI_RS.html
 % 4. https://www.sharetechnote.com/html/5G/5G_CSI_Report.html
 % 5. https://www.sharetechnote.com/html/5G/5G_PDSCH_DMRS.html
+%
+% This script and all the functions it used are adapted from reference 1
+% files for this specific study, application and setting.
 
 clear
 clc
@@ -86,11 +89,11 @@ simParams.NRxAnts = prod([simParams.ReceiveAntennaArray.NumPanels,...
 %% CSI-RS Configuration
 simParams.CSIRS = nrCSIRSConfig;
 simParams.CSIRS.CSIRSType = 'nzp'; % 'nzp','zp'
-simParams.CSIRS.RowNumber = 6; % 1...18
+simParams.CSIRS.RowNumber = 3; % 1...18
 simParams.CSIRS.NumRB = simParams.Carrier.NSizeGrid - simParams.CSIRS.RBOffset;
 simParams.CSIRS.CSIRSPeriod = [10 0];
 simParams.CSIRS.SymbolLocations = 4;
-simParams.CSIRS.SubcarrierLocations = [0,3,6,9];
+simParams.CSIRS.SubcarrierLocations = 0; %[0,3,6,9];
 simParams.CSIRS.Density = 'one';
 
 disp(['Number of CSI-RS ports: ' num2str(simParams.CSIRS.NumCSIRSPorts) '.'])
@@ -131,16 +134,16 @@ simParams.UEProcessingDelay = 7;
 simParams.BSProcessingDelay = 1;
 
 %% Channel
-simParams.DelayProfile = 'TDL-C';   % 'CDL-' or 'TDL-'
+simParams.DelayProfile = 'CDL-C';   % 'CDL-' or 'TDL-'
 simParams.DelaySpread = 300e-9;     % s
 simParams.MaximumDopplerShift = 5;  % Hz
 simParams.Channel = Channel.CreateChannel(simParams);
 
 %% Processing Loop
 % Array to store the maximum throughput for all SNR points
-maxThroughput = zeros(length(simParameters.SNRIn),1); 
+maxThroughput = zeros(length(simParams.SNRIn),1); 
 % Array to store the simulation throughput for all SNR points
-simThroughput = zeros(length(simParameters.SNRIn),1);
+simThroughput = zeros(length(simParams.SNRIn),1);
 % Cell array to store CSI reports per SNR point
 CSIReport = {};
 
@@ -160,8 +163,26 @@ opt = {  'noCDM',[1,1]
 cdmLengths = opt{strcmpi(cdm,opt(:,1)),2};
 end
 
+function csiFeedbackOpts = getCSIFeedbackOptions(simParams,snrIdx)
 
+csiFeedbackOpts = struct();
+csiFeedbackOpts.CSIReportMode = simParams.CSIReportMode;
 
+csiFeedbackOpts.CSIReportPeriod = simParameters.CSIReportConfig.Period;
+csiFeedbackOpts.CSIReportConfig = simParameters.CSIReportConfig;
+csiFeedbackOpts.PerfectChannelEstimator = simParameters.PerfectChannelEstimator;
+csiFeedbackOpts.DMRSConfig = simParameters.PDSCH.DMRS;
+
+% if strcmpi(simParameters.CSIReportMode,"AI CSI compression")
+%     % Copy additional link adaptation configuration for AI CSI compression mode
+%     csiFeedbackOpts.AINetworkFilename = simParameters.AINetworkFilename;
+% 
+%     % Download and extract a pretrained CSI network for AI CSI compression mode
+%     displayProgress = (snrIdx==1);
+%     helperCSINetDownloadData(displayProgress);
+% end
+
+end
 
 
 

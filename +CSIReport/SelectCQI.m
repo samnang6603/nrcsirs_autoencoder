@@ -1,4 +1,4 @@
-function [CQI,PMISet,CQIInfo,PMIInfo] = CQISelect(carrier,CQIPMICalcParams)
+function [CQI,PMISet,CQIInfo,PMIInfo] = SelectCQI(carrier,CQIPMICalcParams)
 %CQISelect Calculates CQI Based on the given CQI-PMI-RI configurations 
 
 % Get various parameters from CQIPMICalcParams
@@ -71,9 +71,12 @@ csirsIndSubs_k = csirsIndSubs_kTmp(indInsideBWP) - bwpStart*12;
 csirsIndSubs_l = csirsIndSubs_lTmp(indInsideBWP);
 
 % PMI select using DLPMISelect()
-[PMISet,PMIInfo] = DLPMISelect(carrier,csirs,csirsInd,reportConfig,numLayers,H,nVar);
+[PMISet,PMIInfo] = SelectDLPMI(carrier,csirs,csirsInd,reportConfig,numLayers,H,nVar);
 
+% Handles case where there is no CSI-RS
+% To be implemented later
 
+sinrPerREPMI = PMIInfo.SINRPerREPMI;
 
 
 

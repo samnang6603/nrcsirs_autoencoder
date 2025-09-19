@@ -1,4 +1,4 @@
-function [PMISet,W,SINRPerREPMI,subbandSINRs] = SetTypeIPMIWideband(SINRPerRE,codebook,codebookIdxSetSizes)
+function [PMISet,W,SINRPerREPMI,subbandSINRs] = ComputeTypeIPMIWideband(SINRPerRE,codebook,codebookIdxSetSizes)
 %SetPMIWideband output PMI set for Type I single panel and multiplanel
 %codebooks, precoding matrix and subband SINR info.
 
@@ -12,7 +12,7 @@ SINRSum = squeeze(sum(SINRSum,2)); % sum along layers and collapse singleton dim
 SINRSum = reshape(SINRSum,codebookIdxSetSizes);
 
 % Round SINR value to 4 decimal places to avoid fluctuations in the PMI
-% output due to minute variations of the SINR valuesand their respective
+% output due to minute variations of the SINR values and their respective
 % PMI indices
 SINRSum = round(SINRSum,4,'decimals');
 

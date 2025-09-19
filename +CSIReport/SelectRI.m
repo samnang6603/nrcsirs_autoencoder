@@ -1,4 +1,4 @@
-function [RI,PMISet] = RISelect(carrier,csirs,dmrsConfig,reportConfig,H,varargin)
+function [RI,PMISet] = SelectRI(carrier,csirs,dmrsConfig,reportConfig,H,varargin)
 %RISelect Calculates and returns RI and PMISet
 %   Detailed explanation goes here
 
