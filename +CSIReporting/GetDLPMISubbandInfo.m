@@ -1,4 +1,4 @@
-function PMISubbandInfo = DLPMISubbandInfo(reportConfig)
+function PMISubbandInfo = GetDLPMISubbandInfo(reportConfig)
 %DLPMISubbandInfo Get information on downlink PMI subband
 %
 % This implementation is adapted from MathWorks example helper 

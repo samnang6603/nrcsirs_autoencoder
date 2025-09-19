@@ -69,14 +69,34 @@ simParams.LDPC.DecodingAlgorithm = 'Normalized min-sum';
 
 % Miscellaneous
 simParams.PDSCHExtension.PRGBundleSize = 4; % Precoding Block Group
-simParams.PDSCHExtension.XOverhead = [];
+simParams.PDSCHExtension.xOverhead = [];
 
 %% Antenna Configuration
+% Table of antenna panel array configurations
+% M  = # of rows in each antenna panel
+% N  = # of columns in each antenna panel
+% P  = # of polarizations (1 or 2)
+% Mg = # of rows in the array of panels
+% Ng = # of columns in the array of panels
+% Row format= [M  N   P   Mg  Ng]
+antArraySizes = ...
+   [1   1   1   1   1;   % 1 ants
+    1   1   2   1   1;   % 2 ants
+    2   1   2   1   1;   % 4 ants
+    2   2   2   1   1;   % 8 ants
+    2   4   2   1   1;   % 16 ants
+    4   4   2   1   1;   % 32 ants
+    4   4   2   1   2;   % 64 ants
+    4   8   2   1   2;   % 128 ants
+    4   8   2   2   2;   % 256 ants
+    8   8   2   2   2;   % 512 ants
+    8  16   2   2   2];  % 1024 ants
+
 simParams.TransmitAntennaArray.NumPanels        = 1; % Number of transmit panels in horizontal dimension (Ng)
-simParams.TransmitAntennaArray.PanelDimensions  = [2, 2]; % Number of columns and rows in the transmit panel (N1, N2)
+simParams.TransmitAntennaArray.PanelDimensions  = [1, 1]; % Number of columns and rows in the transmit panel (N1, N2)
 simParams.TransmitAntennaArray.NumPolarizations = 2; % Number of transmit polarizations
 simParams.ReceiveAntennaArray.NumPanels         = 1; % Number of receive panels in horizontal dimension (Ng)
-simParams.ReceiveAntennaArray.PanelDimensions   = [2, 1]; % Number of columns and rows in the receive panel (N1, N2)
+simParams.ReceiveAntennaArray.PanelDimensions   = [1, 1]; % Number of columns and rows in the receive panel (N1, N2)
 simParams.ReceiveAntennaArray.NumPolarizations  = 2; % Number of receive polarizations
 
 simParams.NTxAnts = prod([simParams.TransmitAntennaArray.NumPanels,...
@@ -149,6 +169,25 @@ CSIReport = {};
 
 for snrIdx = 1:length(simParams.SNRIn)
 
+    % Random seed for reproducibility
+    rng(0,'twister');
+
+    % Copy simParams structure to prevent extra variables affecting
+    % simParams
+    simParamsPrivate = simParams;
+
+    % CSI Feedback options
+    csiFeedbackOptions = CSIReporting.ConfigureCSIFeedbackOptions(simParamsPrivate,snrIdx);
+
+    % Configure Channel
+    [channel,maxChannelDelay] = Channel.CreateChannel(simParamsPrivate);
+
+    % Configure Tx
+    [carrier,encDLSCH,pdsch,pdschextra,csirs,wtx] = TxRx.ConfigureTx(simParamsPrivate);
+
+    % Configure Rx
+    [decodeDLSCH,timingOffset,N0,noiseEst,csiReports,csiAvailableSlots] = TxRx.ConfigureRx(simParamsPrivate,channel,snrIdx,csiFeedbackOpts);
+
     
 
 end
@@ -162,41 +201,6 @@ opt = {  'noCDM',[1,1]
           'CDM8',[2,4]};
 cdmLengths = opt{strcmpi(cdm,opt(:,1)),2};
 end
-
-function csiFeedbackOpts = getCSIFeedbackOptions(simParams,snrIdx)
-
-csiFeedbackOpts = struct();
-csiFeedbackOpts.CSIReportMode = simParams.CSIReportMode;
-
-csiFeedbackOpts.CSIReportPeriod = simParameters.CSIReportConfig.Period;
-csiFeedbackOpts.CSIReportConfig = simParameters.CSIReportConfig;
-csiFeedbackOpts.PerfectChannelEstimator = simParameters.PerfectChannelEstimator;
-csiFeedbackOpts.DMRSConfig = simParameters.PDSCH.DMRS;
-
-% if strcmpi(simParameters.CSIReportMode,"AI CSI compression")
-%     % Copy additional link adaptation configuration for AI CSI compression mode
-%     csiFeedbackOpts.AINetworkFilename = simParameters.AINetworkFilename;
-% 
-%     % Download and extract a pretrained CSI network for AI CSI compression mode
-%     displayProgress = (snrIdx==1);
-%     helperCSINetDownloadData(displayProgress);
-% end
-
-end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
