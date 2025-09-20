@@ -1,4 +1,4 @@
-function [PMISet,PMIInfo] = DLPMISelect(carrier,csirs,csirsIndSub,reportConfig,numLayers,H,nVar)
+function [PMISet,PMIInfo] = SelectDLPMI(carrier,csirs,csirsIndSubs,reportConfig,numLayers,H,nVar)
 %DLPMISelect PMI Calculation for Downlink (PDSCH)
 
 % Source of values:
@@ -8,29 +8,30 @@ function [PMISet,PMIInfo] = DLPMISelect(carrier,csirs,csirsIndSub,reportConfig,n
 %     for clarity, maintainability, and bug prevention.
 %
 
-reportConfig = Codebook.TypeISinglePanel.ConfigureCodebookParameters(reportConfig);
+% Configure Codebook
+reportConfig = configureCodebook(reportConfig,csirs);
 
 % Lookup codebook
 [codebook,codebookIdxSetSizes] = lookupCodebook(reportConfig,csirs.NumCSIRSPorts,numLayers);
 
 % Get PMI subband related information
-subbandInfo = CSIReport.DLPMISubbandInfo(carrier,reportConfig);
+subbandInfo = CSIReporting.GetDLPMISubbandInfo(reportConfig);
 
 % Get CSI-RS indices inside BWP
-[H_bwp,csirsIndBWP_k,csirsIndBWP_l,csirsIndBWP_p] = getInsideBWPComponents(carrier,...
+[Hbwp,csirsIndBWP_k,csirsIndBWP_l,csirsIndBWP_p] = getInsideBWPComponents(carrier,...
     reportConfig,H,csirsIndSubs);
 
 % Allocate NaN for PMI and get the information
 [PMINaNSet,nanInfo] = allocatePMINaN(reportConfig,subbandInfo,codebook,...
-    codebookIdxSetSizes,csirs.numCSIRSPorts,numLayers,csirsIndBWP_k);
+    codebookIdxSetSizes,csirs.NumCSIRSPorts,numLayers,csirsIndBWP_k);
 
 % If no CSI-RS Report all as NaN
 % to be implemented later
 
 % Compute SINRPerRE
 Htmp = reshape(Hbwp,[],size(Hbwp,3),size(Hbwp,4));
-Hcsirs = Htmp(csirsIndBWP_k+(csirsIndBWP_l-1)*size(H_bwp,3),:,:);
-SINRPerRE = CSIReport.ComputePrecodedSINRPerRE(Hcsirs,codebook,...
+Hcsirs = Htmp(csirsIndBWP_k+(csirsIndBWP_l-1)*size(Hbwp,1),:,:);
+SINRPerRE = CSIReporting.ComputePrecodedSINRPerRE(Hcsirs,codebook,...
     codebookIdxSetSizes,nVar,csirsIndBWP_k,numLayers);
 
 % Compute PMI Wideband
@@ -42,9 +43,9 @@ numSubbands = subbandInfo.NumSubbands;
 if numSubbands > 1
     switch reportConfig.CodebookType
         case {'TypeISinglePanel','TypeIMultiPanel'}
-            [PMISet,W,SINRPerREPMI,subbandSINRs] = Codebook.ComputeTypeIPMISubband(carrier,...
-                codebook,PMISet,SINRPerRE,subbandInfo,...
-                codebookIdxSetSizes,numLayers,k,l)
+            [PMISet,W,SINRPerREPMI,subbandSINRs] = Codebook.ComputeTypeIPMISubband(...
+                reportConfig,codebook,PMISet,SINRPerRE,subbandInfo,...
+                codebookIdxSetSizes,numLayers,csirsIndBWP_k);
         case {'TypeII','eTypeII'}
     end
 end
@@ -52,23 +53,47 @@ end
 % Output result
 switch reportConfig.CodebookType
     case {'TypeISinglePanel','TypeIMultiPanel'}
-        SINRPerRE_out = SINPerRE; % for all layers for all PMI indices
+        SINRPerRE_out = SINRPerRE; % for all layers for all PMI indices
         codebook_out  = codebook; % codebook for all PMI indices
         % SINR per subband for all layers and all PMI indices
-        subbandSINRs = reshape(subbandSINRs,subbandInfo.NumSubbands,...
-            numLayers,codebookIdxSetSizes);
+        subbandSINRs = reshape(subbandSINRs,[subbandInfo.NumSubbands,...
+            numLayers,codebookIdxSetSizes]);
     case {'TypeII','eTypeII'}
         SINRPerRE_out = [];
         codebook_out  = [];
 end
-PMIinfo.SINRPerRE = SINRPerRE_out;
-PMIinfo.SINRPerREPMI = SINRPerREPMI;   % SINR value per RE for all the layers for the reported PMI
-PMIinfo.Codebook = codebook_out;
-PMIinfo.SINRPerSubband = SubbandSINRs; % SINR value per subband for all the layers for the reported PMI
-PMIinfo.W = W;                         % Precoding matrix corresponding to the reported PMI
-PMIinfo.CSIRSIndices = [csirsIndBWP_k csirsIndBWP_l csirsIndBWP_p]; % CSI-RS RE indices where the SINR value per RE are calculated
+PMIInfo.SINRPerRE = SINRPerRE_out;
+PMIInfo.SINRPerREPMI = SINRPerREPMI;   % SINR value per RE for all the layers for the reported PMI
+PMIInfo.Codebook = codebook_out;
+PMIInfo.SINRPerSubband = subbandSINRs; % SINR value per subband for all the layers for the reported PMI
+PMIInfo.W = W;                         % Precoding matrix corresponding to the reported PMI
+PMIInfo.CSIRSIndices = [csirsIndBWP_k, csirsIndBWP_l, csirsIndBWP_p]; % CSI-RS RE indices where the SINR value per RE are calculated
+
 end
 
+function reportConfig = configureCodebook(reportConfig,csirs)
+%configureCodebook Configure codebook and validate panel dimensions
+
+% Start with N1, N2, O1, O2 = 1
+numCSIRSPorts = csirs.NumCSIRSPorts(1);
+
+% TypeISinglePanelFlag = strcmpi(reportConfig.CodebookType,'TypeISinglePanel');
+% TypeIMultiPanelFlag  = strcmpi(reportConfig.CodebookType,'TypeIMultiPanel');
+% TypeIIFlag  = strcmpi(reportConfig.CodebookType,'TypeII');
+% ETypeIIFlag = strcmpi(reportConfig.CodebookType,'ETypeII');
+
+switch reportConfig.CodebookType
+    case 'TypeISinglePanel'
+        reportConfig = Codebook.TypeISinglePanel.ConfigureCodebookParameters(reportConfig,numCSIRSPorts);
+    case 'TypeIMultiPanel'
+        % To be implemented later when moving to multiPanel
+end
+
+
+
+
+
+end
 
 
 function [codebook,codebookIdxSetSizes] = lookupCodebook(reportConfig,numCSIRSPorts,numLayers)
@@ -84,20 +109,11 @@ switch reportConfig.CodebookType
             codebook = 1;
         else
             % Codebook is an N-dim of size
-            % nHEstCSIRSPorts x numLayers x i2Len x i11Len x i12Len x i13Len
+            % Pcsirs x numLayers x i2Len x i11Len x i12Len x i13Len
             % - OR -
-            % nHEstCSIRSPorts x numLayers x i2Len
-            reportConfig = Codebook.TypeISinglePanel.ConfigureCodebookParameters();
-            [codebook,codebookSize] = Codebook.TypeISinglePanel.ExtractCodebook(reportConfig,numCSIRSPorts,numLayers);
+            % Pcsirs x numLayers x i2Len
+            [codebook,codebookIdxSetSizes] = Codebook.TypeISinglePanel.ExtractCodebook(reportConfig,numCSIRSPorts,numLayers);
         end
-
-        % Size of the codebook
-        i2Len  = codebookSize(3);
-        i11Len = codebookSize(4);
-        i12Len = codebookSize(5);
-        i13Len = codebookSize(6);
-
-        codebookIdxSetSizes = [i2Len; i11Len; i12Len; i13Len];
 
     case 'TypeIMultiPanel'
 
@@ -187,7 +203,7 @@ if contains(reportConfig.CodebookType,'TypeI')
     nanInfo.SINRPerREPMI = NaN(csirsIndLen,numLayers);
     nanInfo.SINRPerSubband = NaN(subbandInfo.NumSubbands,numLayers);
     nanInfo.Codebook = codebook;
-    nanInfo.W = NaN(numCSIRSPorts,nLayers);
+    nanInfo.W = NaN(numCSIRSPorts,numLayers);
 end
 
 end

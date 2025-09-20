@@ -10,10 +10,9 @@ SINRPerRE = zeros([csirsIndSubsLen,numLayers,codebookIdxSetSizes]);
 % Total number of element in codebook index set size
 numElemIdxSet = numel(codebookIdxSetSizes);
 
-% if number of sc in BWP less than codebook index set size
-if csirsIndSubsLen < numElemIdxSet
 
-else
+if csirsIndSubsLen > numElemIdxSet
+    % If the number of sc in BWP is greater than codebook index set size
     for idx = 1:numElemIdxSet
         % Check if all elements are zeros
         if any(codebook(:,:,idx),'all')
@@ -23,8 +22,9 @@ else
             sinr = computePrecodedSINRSubroutine(H,W,nVar);
             SINRPerRE(:,:,idx) = sinr;
         end
-
     end
+else
+    % If the number of sc in BWP is less than codebook index set size
 end
 
 end

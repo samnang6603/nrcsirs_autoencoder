@@ -2,7 +2,7 @@ function [carrier,encDLSCH,pdsch,pdschextra,csirs,wtx] = ConfigureTx(simParams)
 % Get channel and signal-level params create DL encoders and precoding
 % matrix
 
-carrier = simParams.Carriers;
+carrier = simParams.Carrier;
 pdsch   = simParams.PDSCH;
 pdschextra = simParams.PDSCHExtension;
 csirs   = simParams.CSIRS;
@@ -18,7 +18,7 @@ wtx = 1;
 % stays within 3GPP spec limits and does not affect PDSCH decoding or other
 % critical channels. 
 % The same concept applies to SRS and PUCCH/PUSCH allocations.
-if iempty(pdschextra.xOverhead)
+if isempty(pdschextra.xOverhead)
     [~,csirsInfo] = nrCSIRSIndices(carrier,csirs);
 
     % Get Frequency-domain and time-domain locations of the lowest resource 

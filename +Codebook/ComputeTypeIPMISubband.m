@@ -1,4 +1,4 @@
-function [PMISet,W,SINRPerREPMI,subbandSINRs] = ComputeTypeIPMISubband(...
+function [PMISet,W,SINRPerREPMI,subbandSINRs] = ComputeTypeIPMISubband(reportConfig,...
     codebook,PMISet,SINRPerRE,subbandInfo,codebookIdxSetSizes,numLayers,k)
 %SetTypeIPMISubband Computes PMI for Type I single or multipanel for
 %subband. Takes results from wideband computations as well
@@ -9,23 +9,22 @@ numCSIRSPorts = size(codebook,1);
 % Allocations some outputs
 W = zeros(numCSIRSPorts,numLayers,numSubbands);
 SINRPerREPMI = zeros(length(k),numLayers);
-subbandSINRs = NaN(numSubbands,numLayers,codebookIdxSetSizes);
+subbandSINRs = NaN([numSubbands,numLayers,codebookIdxSetSizes]);
 
 % Start of subband is index 0
-subbandInit = 0;
-
-% Lower bound of BWP
-lowerBound = k >= (subbandInit*12 + 1);
-
+subbandStartPos = 0;
 
 % Sift through the subbands
 for thisSB = 1:numSubbands
 
     % Subband size w.r.t subband index
     subbandSize = subbandInfo.SubbandSizes(thisSB);
+
+    % Lower bound of BWP
+    lowerBound = k >= (subbandStartPos*12 + 1);
     
     % Upper bound requires sb idx
-    upperBound = k <= ((subbandInit + subbandSize)*12 + 1);
+    upperBound = k <= ((subbandStartPos + subbandSize)*12);
 
     % Intersection between lower and upper bound
     subbandInd = lowerBound & upperBound;
@@ -68,7 +67,7 @@ for thisSB = 1:numSubbands
                 % To be implemented later
         end
     end
-    % Find the initial position of the next subband
-    subbandInit = subbandInit + subbandInfo.SubbandSizes(thisSB);
+    % Update start position
+    subbandStartPos = subbandStartPos + subbandInfo.SubbandSizes(thisSB);
 end
 end

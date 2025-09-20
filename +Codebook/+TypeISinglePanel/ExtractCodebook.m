@@ -1,4 +1,4 @@
-function [codebook,codebookSize] = ExtractCodebook(reportConfig,Pscirs,numLayers)
+function [codebook,codebookIdxSetSizes] = ExtractCodebook(reportConfig,Pscirs,numLayers)
 %COMPUTEPMI Calculate PMI and get the codebook for Type I single-panel
 %codebook.
 
@@ -16,7 +16,7 @@ if Pscirs == 2 % basically simple 2 Tx
     if numLayers == 1
         % Means take the two Tx and combine them with different relative
         % phases, yielding beam steering in different directions
-        codebook = zeros(0,0,4);
+        codebook = zeros(2,1,4); % Pre-allocation
         codebook(:,:,1) = 1/sqrt(2).*[1;  1 ]; % no phase offset
         codebook(:,:,2) = 1/sqrt(2).*[1;  1i]; % 90 deg phase offset
         codebook(:,:,3) = 1/sqrt(2).*[1; -1 ]; % 180 deg phase offset
@@ -170,9 +170,10 @@ elseif Pscirs > 2
     end
 
 end
-
-
-codebookSize = size(codebook);
+% Size of the codebook. Ignore the first 2 dims, and extend as far
+% as i13 index. Collate it in codebookIdxSetSizes
+[~,~,i2Len,i11Len,i12Len,i13Len] = size(codebook);
+codebookIdxSetSizes = [i2Len, i11Len, i12Len, i13Len];
 end
 
 
@@ -182,7 +183,6 @@ end
 
 function [vlmRestricted,i2Restricted] = checkRestriction(codebookSubsetRestriction,...
     linearStrideIdx,coPhasingFactorIdx,i2Restriction)
-
 
 % Find the restricted set and set to -1
 restrictedIdx = find(~codebookSubsetRestriction)-1;

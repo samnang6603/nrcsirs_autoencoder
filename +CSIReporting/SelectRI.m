@@ -1,22 +1,25 @@
-function [RI,PMISet] = SelectRI(carrier,csirs,dmrsConfig,reportConfig,H,varargin)
+function [RI,PMISet] = SelectRI(carrier,csirs,csiFeedbackOpts,H,varargin)
 %RISelect Calculates and returns RI and PMISet
 %   Detailed explanation goes here
 
 % Start with a small noise var
 nVar = 1e-10;
 alg = 'MaxSINR'; % default algorithm
-if nargin > 5
+if nargin == 5
     nVar = varargin{1}; % This argument in the noise var
-elseif nargin > 6
+elseif nargin > 5
     nVar = varargin{1};
     alg = varargin{2};
 end
 
-% Get Codebook Type
-cbType = reportConfig.CodebookType;
+% CSI reportConfig
+reportConfig = csiFeedbackOpts.CSIReportConfig;
+
+% DMRS
+dmrsConfig = csiFeedbackOpts.DMRSConfig;
 
 % Get CSI-RS indices
-csirsInd = nrCSIRSIndices(carrier,csirs,IndexStyle="subscript");
+csirsInd = nrCSIRSIndices(carrier,csirs,IndexStyle='subscript');
 
 % Update BWP and Total RBs from carrier
 reportConfig.NStartBWP = carrier.NStartGrid;
@@ -27,22 +30,22 @@ RIRestrictionVector = makeRIVector(reportConfig);
 reportConfig.RIRestriction = RIRestrictionVector;
 
 % Calculate the number of subbands and size of each given configuration
-PMISubbandInfo = CSIReport.DLPMISubbandInfo(reportConfig);
+PMISubbandInfo = CSIReporting.GetDLPMISubbandInfo(reportConfig);
 
 % Number of CSI-RS port
-nPortCSIRS = size(H,4);
+Pcsirs = size(H,4);
 
 % Number of RX
 nRxAnts = size(H,3);
 
 % Find max possible rank defined in TS 38.214 5.2.2.2.1 
-switch cbType
+switch reportConfig.CodebookType
     case 'TypeISinglePanel'
         % Max rank is 8 for this type
-        maxRank = min([8,nPortCSIRS,nRxAnts]); % if RX or Port exceeds 8
+        maxRank = min([8,Pcsirs,nRxAnts]); % if RX or Port exceeds 8
     case 'TypeII'
         maxRank = min(nRxAnts,2);
-    case {'ETypeII','TypeIMultipanel'}
+    case {'ETypeII','eTypeII','EnhTypeII','TypeIMultipanel'}
         maxRank = min(nRxAnts,4);
     otherwise
         maxRank = min(nRxAnts,4);
@@ -53,15 +56,15 @@ unrestrictedRanks = find(reportConfig.RIRestriction);
 possibleRanks = intersect(1:maxRank,unrestrictedRanks);
 
 % Initialize RI and PMISet allocation
-RI = [];
+RI = NaN;
 PMISet = struct();
-switch cbType
-    case 'Type1SinglePanel'
+switch reportConfig.CodebookType
+    case 'TypeISinglePanel'
         PMISet.i1 = [NaN, NaN, NaN];
-        PMISet.i2 = Nan(1,PMISubbandInfo.NumSubbands);
+        PMISet.i2 = NaN(1,PMISubbandInfo.NumSubbands);
     otherwise
         PMISet.i1 = NaN(1,6);
-        PMISet.i2 = Nan(3,PMISubbandInfo,NumSubbands);
+        PMISet.i2 = NaN(3,PMISubbandInfo,NumSubbands);
 end
 
 CQIPMICalcParams = struct();
@@ -75,18 +78,18 @@ CQIPMICalcParams.PossibleRanks = possibleRanks;
 CQIPMICalcParams.PMISubbandInfo = PMISubbandInfo;
 
 if ~isempty(possibleRanks) && ~isempty(csirsInd)
-    if strcmpi(alg,'MaxSE')
-        [RI,PMISet] = calculateCQI(CQIPMICalcParams,PMISet);
-    else
-        [RI,PMISet] = calculatePMI(CQIPMICalcParams,PMISet);
+    switch alg
+        case 'MaxSE'
+            [RI,PMISet] = riCalculateCQI(CQIPMICalcParams,PMISet);
+        case 'MaxSINR'
+            [RI,PMISet] = riCalculatePMI(CQIPMICalcParams,PMISet);
+        otherwise
+            error('Unknown Criteria: Must be MaxSE or MaxSINR');
     end
 end
-
-
-
 end
 
-function [RI,PMISet] = calculateCQI(CQIPMICalcParams)
+function [RI,PMISet] = riCalculateCQI(CQIPMICalcParams,PMISet)
 %calculateCQI - CQI Computation
 
 possibleRanks = CQIPMICalcParams.PossibleRanks;
@@ -105,18 +108,13 @@ efficiency = NaN(maxRank,1);
 for r = possibleRanks
     % Find CQI and PMI for current rank
     CQIPMICalcParams.ThisRank = r;
-    [cqi,pmi(r),cqiInfo] = s;
+    [cqi,pmi(r),cqiInfo] = CSIReporting.SelectCQI(CQIPMICalcParams);
 
 
 
 end
 
 end
-
-
-
-
-
 
 
 
@@ -125,16 +123,16 @@ function RIRestrictionVector = makeRIVector(reportConfig)
 % Validate and make RI vector with each element corresponds to the index of
 % the individual rank, with max dictates by maxRank
 switch reportConfig.CodebookType
-    case 'Type1SinglePanel'
+    case 'TypeISinglePanel'
         maxRank = 8;
         %codebookType = 'type I single-panel';
-    case 'Type1MultiPanel'
+    case 'TypeIMultiPanel'
         maxRank = 4;
         %codebookType = 'type I multi-panel';
-    case 'Type2'
+    case 'TypeII'
         maxRank = 2;
         %codebookType = 'type II';
-    case 'EType2'
+    case {'eTypeII','ETypeII','EnhTypeII'}
         maxRank = 4;
         %codebookType = 'enhanced type II';
     otherwise

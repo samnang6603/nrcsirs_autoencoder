@@ -18,7 +18,7 @@ SINRSum = round(SINRSum,4,'decimals');
 
 % Get the indices set that correspond to the precoding matrix with max SINR
 maxSINR = max(SINRSum,[],'all');
-maxSINRInd = find(totalSINR == maxSINR,1); % find maxSINR indices 1st dim
+maxSINRInd = find(SINRSum == maxSINR,1); % find maxSINR indices 1st dim
 [i2, i11, i12, i13] = ind2sub(size(SINRSum),maxSINRInd);
 PMISet.i1 = [i11, i12, i13];
 PMISet.i2 = i2;

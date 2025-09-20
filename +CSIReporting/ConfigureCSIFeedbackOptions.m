@@ -1,12 +1,7 @@
 function csiFeedbackOpts = ConfigureCSIFeedbackOptions(simParams,snrIdx)
 
-csiFeedbackOpts = struct();
-csiFeedbackOpts.CSIReportMode = simParams.CSIReportMode;
-
-csiFeedbackOpts.CSIReportPeriod = simParameters.CSIReportConfig.Period;
-csiFeedbackOpts.CSIReportConfig = simParameters.CSIReportConfig;
-csiFeedbackOpts.PerfectChannelEstimator = simParameters.PerfectChannelEstimator;
-csiFeedbackOpts.DMRSConfig = simParameters.PDSCH.DMRS;
+csiFeedbackOpts.CSIReportConfig = simParams.CSIReportConfig;
+csiFeedbackOpts.DMRSConfig = simParams.PDSCH.DMRS;
 
 % if strcmpi(simParameters.CSIReportMode,"AI CSI compression")
 %     % Copy additional link adaptation configuration for AI CSI compression mode

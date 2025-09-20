@@ -26,7 +26,7 @@ These are the premises of this experiment:
 clear
 clc
 simParams = struct();
-simParams.SNRIn = -5:5:10;
+simParams.SNRIn = -10:5:10;
 
 %% Simulation Toggles
 simParams.PerfectChannelEstimator = false;
@@ -66,10 +66,15 @@ MCSIndex = 13;
 mcsTable = simParams.PDSCHExtension.MCSTables.QAM64Table;
 simParams.LDPC.TargetCodeRate = mcsTable.TargetCodeRate(mcsTable.MCSIndex == MCSIndex); 
 simParams.LDPC.DecodingAlgorithm = 'Normalized min-sum';
+simParams.LDPC.MaximumLDPCIterationCount = 6;
 
 % Miscellaneous
 simParams.PDSCHExtension.PRGBundleSize = 4; % Precoding Block Group
 simParams.PDSCHExtension.xOverhead = [];
+
+
+%% HARQ Process
+simParams.EnableHARQ = false;
 
 %% Antenna Configuration
 % Table of antenna panel array configurations
@@ -127,10 +132,10 @@ simParams.CSIReportConfig.Period = [5,0];
 
 switch upper(simParams.CSIReportConfig.Mode)
     case 'RI-PMI-CQI'
-        simParams.CSIReportConfig.CQITable          = "Table1"; % 'Table1','Table2','Table3'
+        simParams.CSIReportConfig.CQITable          = 'Table1'; % 'Table1','Table2','Table3'
         simParams.CSIReportConfig.CQIMode           = 'Wideband'; % 'Wideband','Subband'
         simParams.CSIReportConfig.PMIMode           = 'Subband'; % 'Wideband','Subband'
-        simParams.CSIReportConfig.CodebookType      = 'Type1SinglePanel'; % 'Type1SinglePanel','Type1MultiPanel','Type2','eType2'
+        simParams.CSIReportConfig.CodebookType      = 'TypeISinglePanel'; % 'TypeISinglePanel','TypeIIMultiPanel','TypeII','ETypeII'
         simParams.CSIReportConfig.SubbandSize       = 4; % Subband size in RB (4,8,16,32)
         simParams.CSIReportConfig.CodebookMode      = 1; % 1,2
         simParams.CSIReportConfig.RIRestriction     = []; % Empty for no rank restriction
@@ -141,8 +146,15 @@ switch upper(simParams.CSIReportConfig.Mode)
         simParams.CSIReportConfig.NumberOfPMISubbandsPerCQISubband = 1; % 1,2. Only for Enhanced Type II codebooks
         simParams.CSIReportConfig.NStartBWP         = []; % Empty to signal the entire carrier
         simParams.CSIReportConfig.NSizeBWP          = []; % Empty to signal the entire carrier
-        simParams.CSIReportConfig.PanelDimensions = simParams.TransmitAntennaArray.NumPanels; % Panel Dimension
         simParams.CSIReportConfig.RIRestriction = [];
+        switch simParams.CSIReportConfig.CodebookType
+            case 'TypeIMultiPanel'
+                simParams.CSIReportConfig.PanelDimensions = [simParams.ReceiveAntennaArray.NumPanels,...
+                    simParams.TransmitAntennaArray.PanelDimensions]; % Panel Dimension
+            otherwise
+                simParams.CSIReportConfig.PanelDimensions = simParams.TransmitAntennaArray.PanelDimensions; % Panel Dimension
+
+        end
     case 'AUTOENCODER'
         simParams.Autoencoder = 'csiTrainedNetwork.mat';
     otherwise
@@ -158,6 +170,7 @@ simParams.DelayProfile = 'CDL-C';   % 'CDL-' or 'TDL-'
 simParams.DelaySpread = 300e-9;     % s
 simParams.MaximumDopplerShift = 5;  % Hz
 simParams.Channel = Channel.CreateChannel(simParams);
+simParams.ChannelInformation = info(simParams.Channel);
 
 %% Processing Loop
 % Array to store the maximum throughput for all SNR points
@@ -180,13 +193,15 @@ for snrIdx = 1:length(simParams.SNRIn)
     csiFeedbackOptions = CSIReporting.ConfigureCSIFeedbackOptions(simParamsPrivate,snrIdx);
 
     % Configure Channel
-    [channel,maxChannelDelay] = Channel.CreateChannel(simParamsPrivate);
+    channel = simParamsPrivate.Channel;
+    reset(channel);
+    maxChannelDelay = simParamsPrivate.ChannelInformation.MaximumChannelDelay;
 
     % Configure Tx
     [carrier,encDLSCH,pdsch,pdschextra,csirs,wtx] = TxRx.ConfigureTx(simParamsPrivate);
 
     % Configure Rx
-    [decodeDLSCH,timingOffset,N0,noiseEst,csiReports,csiAvailableSlots] = TxRx.ConfigureRx(simParamsPrivate,channel,snrIdx,csiFeedbackOpts);
+    [decodeDLSCH,timingOffset,N0,noiseEst,csiReports,csiAvailableSlots] = TxRx.ConfigureRx(simParamsPrivate,channel,snrIdx,csiFeedbackOptions);
 
     
 
