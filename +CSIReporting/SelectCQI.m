@@ -48,7 +48,7 @@ CQINumSubbands = CQISubbandInfo.NumSubband;
 numCodewords = ceil(numLayers/4);
 
 % Find the start of BWP relative to the carrrier
-bwpStart = reportConfig.NStartBWP - carrier.NStartGrid;
+bwpStartPos = reportConfig.NStartBWP - carrier.NStartGrid;
 
 % Calculate the SINR and CQI values
 % csirsInd = [subcarrier, symbol, port]
@@ -60,11 +60,11 @@ csirsIndSubs_lTmp = csirsInd(:,2); % temp symbol indices
 % convert the BWP to effective sc units.
 % The CSI-RS to the right of the BWP is simply the region starting from the
 % BWP SC to the right
-csirsRightOfBWPStart = csirsIndSubs_kTmp >= bwpStart*12 + 1;
+csirsRightOfBWPStart = csirsIndSubs_kTmp >= bwpStartPos*12 + 1;
 
 % While the CSI-RS to the left of the BWP is simply the region starting
 % from the end of the BWPStart + BWPSize to the left
-csirsLeftOfBWPEnd  = csirsIndSubs_kTmp <= (bwpStart + reportConfig.NSizeBWP)*12;
+csirsLeftOfBWPEnd  = csirsIndSubs_kTmp <= (bwpStartPos + reportConfig.NSizeBWP)*12;
 
 % Therefore, the intersection is the area where valid SCs containing CSI-RS
 % exist inside BWP
@@ -72,14 +72,14 @@ indInsideBWP = csirsRightOfBWPStart & csirsLeftOfBWPEnd;
 
 % Update the subcarrier and symbol indices
 % Also convert the CSI-RS SCs subscripts to BWP scale (-bwpStart*12)
-csirsIndSubs_k = csirsIndSubs_kTmp(indInsideBWP) - bwpStart*12;
+csirsIndSubs_k = csirsIndSubs_kTmp(indInsideBWP) - bwpStartPos*12;
 csirsIndSubs_l = csirsIndSubs_lTmp(indInsideBWP);
 
 % PMI select using DLPMISelect()
 [PMISet,PMIInfo] = CSIReporting.SelectDLPMI(carrier,csirs,csirsInd,reportConfig,numLayers,H,nVar);
 
 % Handles case where there is no CSI-RS
-% >>>>>>>>>>>>>>>>>> TBE
+% >>>>>>>>>>>>>>>>>> TBI
 
 sinrPerREPMI = PMIInfo.SINRPerREPMI;
 switch reportConfig.CodebookType
@@ -90,14 +90,14 @@ switch reportConfig.CodebookType
 
         % PRGSize Handling
         if isfield(reportConfig,'PRGSize') && ~isempty(reportConfig.PRGSize)
-            % PRG Bundle Size TBE
+            % >>>>>>>>>>>>>>>>>>> PRG Bundle Size TBI
         else
             % IF PRGSize is not specified, the PMI selection is either in
             % wideband or subband level granularity
 
             % Compute SINR values of the PMISet in RB level granularity.
             % This is used for information purpose only.
-            % >>>>>>>>>>>>>>>>>> TBE getSINRPerRB fcn
+            % >>>>>>>>>>>>>>>>>> TBI getSINRPerRB fcn
             % SINRPerRBPerCodeword
             
             switch reportConfig.PMIMode
@@ -128,10 +128,10 @@ switch reportConfig.CodebookType
         end
 
     case {'TypeII','ETypeII'}
-        % TBE
+        % >>>>>>>>>>>>>>>>>>>>>>>>> TBI
 end
 
-% Allocate SINR per subband per Codeword
+% Calculate SINR per subband per Codeword
 SINRPerSubbandPerCodeword = zeros(CQINumSubbands,numCodewords);
 for idx = 1:CQINumSubbands
     % Get the SINR values per layer
@@ -152,12 +152,55 @@ for idx = 1:CQINumSubbands
     SINRPerSubbandPerCodeword(idx,:) = SINRPerCodeword;
 end
 
+% Compute wideband SINR value as an average of the subband SINR if either
+% CQI or PMI are configured in mode.
+% If gNB requests PMI/CQI to be reported in subband mode, UE has to report
+% both wideband and subband metrics
+if size(SINRPerSubbandPerCodeword,1) > 1
+    % Average across subbands (1st dim) to get wideband
+    avgWBNoNaN = mean(SINRPerSubbandPerCodeword,1,'omitnan'); 
+    %       Report              [WB          SB]
+    SINRPerSubbandPerCodeword = [avgWBNoNaN; SINRPerSubbandPerCodeword];
+end
+
+% Initialize Link to System (L2S) Mapping Interface
+L2SMConfig = L2SMapping.Initialize(carrier);
+
+% Allocate BLER for all subbands
+BLERAllSubbands = zeros(CQINumSubbands,numCodewords);
+
+%if ~inputSINRTable
+    % Extract CSI reference resource for selection of CQI in TS 38.214
+    % 5.2.2.5
+    [pdsch,pdschX] = ExtractCSIReferenceResource(carrier,...
+        reportConfig,numLayers,dmrsConfig);
+    
+    % Calculate CQI, effective SINR and BLER per subband
+    SINRPerSubbandPerCodeword = zeros(CQINumSubbands,numCodewords);
+    CQIAllSubbands = NaN(CQINumSubbands,numCodewords);
+    sbStartPos = 0;
+    for idx = 1:CQINumSubbands
+        % Find the subband inside BWP, same logic as prior fcns
+        lb = csirsIndSubs_k >= (sbStartPos*12 + 1);
+        ub = csirsIndSubs_k <= ((sbStartPos + CQINumSubbands(idx))*12);
+        sbInd = lb & ub;
+        sinrPerREPMITmp = PMIInfo.SINRPerREPMI(sbInd,:,:);
+        [L2SMConfig,cqiSB,sinrPerSBPerCW,blerSB] = selectCQIL2SM(L2SMConfig,...
+            carrier,pdsch,pdschX.XOverhead,sinrPerREPMITmp,reportConfig.CQITable);
+    end
 
 
+
+
+
+%else
+
+%end
 
 end
 
 
+%% Local Helper Fcn
 function csirsInd = getCSIRSIndices(carrier,csirsConfig)
 % Get CSI-RS indices
 % Put CDM type in a cell (possibly more than 1)
@@ -321,8 +364,91 @@ for thisSB = 1:NumSubbands
 end
 end
 
-function SINRPerRBPerCodeword = getSINRPerRB()
+function [pdsch,pdschX] = ExtractCSIReferenceResource(carrier,...
+    reportConfig,numLayers,dmrsConfig)
+%ExtractCSIReferenceResource Configure PDSCH for CSI reference resource and
+%extract those configurations. See TS 38.214 5.2.2.5
+%
+% From TS 38.214:
+% "In the frequency domain, the CSI reference resource is defined by the 
+% group of downlink physical resource blocks corresponding to the band to 
+% which the derived CSI relates." 
 
+pdsch = nrPDSCHConfig;
+
+% The BWP subcarrier spacing are the same for PDSCH reception
+pdsch.NStartBWP = reportConfig.NStartBWP;
+pdsch.NSizeBWP  = reportConfig.NSizeBWP;
+pdsch.PRBSet    = 0:reportConfig.NSizeBWP-1;
+
+% Symbol Allocation
+% From TS 38.214 5.2.2.5:
+% 1. Symbol #0 and #1 are occupied by control signaling
+% 2. Number of PDSCH and DM-RS symbols is 12
+% The below assignment [2 symsPerSlot-2] means start at 2 and take
+% symsPerSlot (14) - 2 = 12 symbols
+pdsch.SymbolAllocation = [2 carrier.SymbolsPerSlot-2]; 
+
+% Number of layers
+pdsch.NumLayers = numLayers;
+
+% Assume no REs allocated for any CSI-RS type
+pdsch.ReservedRE = [];
+pdsch.ReservedPRB = {};
+
+% DMRS
+pdsch.DMRS.NumCDMGroupsWithoutData = dmrsConfig.NumCDMGroupWithoutData;
+pdsch.DMRS.DMRSConfigurationType = dmrsConfig.DMRSConfigurationType;
+pdsch.DMRS.DMRSLength = dmrsConfig.DMRSLength;
+pdsch.DMRS.DMRSAdditionalPosition = dmrsConfig.DMRSAdditionalPosition;
+pdsch.DMRS.DMRSEnhancedR18 = true; % Enable Rel-18 enhancement feature
+
+% PDSCH Extensions
+pdschX.PRGBundleSize = 2;
+pdschX.RVSeq = 0; % To be changed when HARQ is enabled
+pdschX.XOverhead = 0;
+end
+
+
+function SINRPerRBPerCodeword = getSINRPerRB()
+% TBI
 
 end
- 
+
+function [L2SMConfig,cqiIdx,effSINR,trbBLER] = selectCQIL2SM(L2SMConfig,...
+            carrier,pdsch,XOverhead,sinr,CQITableNumber)
+
+% Allocate outputs
+numCodewords = pdsch.NumCodewords;
+cqiIdx  = NaN(1,numCodewords);
+effSINR = NaN(1,numCodewords);
+trbBLER = NaN(1,numCodewords);
+
+% SINR per layer
+sinr = reshape(sinr,[],pdsch.NumLayers);
+% Convert to dB and handle very small value with eps()
+sinr = 10*log10(sinr + eps(sinr)); 
+nanflg = any(isnan(sinr),2); % test for NaN
+if any(nanflag,'all')
+    return % return if there is NaN values present
+end
+
+% Otherwise, proceed with the non-nan flagged indices
+sinr = sinr(~nanflg,:);
+
+% CQI LUT
+cqiTableObj = nrCQITables;
+thisTable = cqiTableObj.(['CQI',CQITableNumber]);
+thisQm = thisTable.Qm;
+thisTCR = thisTable.TargetCodeRate*1024;
+
+% Use BLER threshold for Table 3 per TS 38.214 5.2.2.1
+isTable3 = strcmpi(CQITableNumber,'Table3');
+blerThreshold = ~isTable3*0.1 + isTable3*1e-5;
+
+[L2SMConfig,cqiIdx,cqiInfo] = L2SMapping.SelectCQI(L2SMConfig,carrier,...
+    pdsch,XOverhead,sinr,thisQm,thisTCR,blerThreshold);
+
+end
+
+

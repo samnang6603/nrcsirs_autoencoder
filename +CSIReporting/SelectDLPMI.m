@@ -149,7 +149,7 @@ function [Hbwp,k,l,p] = getInsideBWPComponents(carrier,reportConfig,H,csirsIndSu
 %       subcarriers
 
 % Find the start of BWP relative to the carrrier
-bwpStart = reportConfig.NStartBWP - carrier.NStartGrid;
+bwpStartPos = reportConfig.NStartBWP - carrier.NStartGrid;
 
 % Calculate the SINR and CQI values
 % csirsInd = [subcarrier, symbol, port]
@@ -161,11 +161,11 @@ lTmp = csirsIndSubs(:,2); % temp symbol indices
 % convert the BWP to effective sc units.
 % The CSI-RS to the right of the BWP is simply the region starting from the
 % BWP SC to the right
-csirsRightOfBWPStart = kTmp >= bwpStart*12 + 1;
+csirsRightOfBWPStart = kTmp >= bwpStartPos*12 + 1;
 
 % While the CSI-RS to the left of the BWP is simply the region starting
 % from the end of the BWPStart + BWPSize to the left
-csirsLeftOfBWPEnd  = kTmp <= (bwpStart + reportConfig.NSizeBWP)*12;
+csirsLeftOfBWPEnd  = kTmp <= (bwpStartPos + reportConfig.NSizeBWP)*12;
 
 % Therefore, the intersection is the area where valid SCs containing CSI-RS
 % exist inside BWP
@@ -173,13 +173,13 @@ indInsideBWP = csirsRightOfBWPStart & csirsLeftOfBWPEnd;
 
 % Update the subcarrier and symbol indices
 % Also convert the CSI-RS SCs subscripts to BWP scale
-k = kTmp(indInsideBWP) - bwpStart*12;
+k = kTmp(indInsideBWP) - bwpStartPos*12;
 l = lTmp(indInsideBWP);
 p = ones(size(k)); % only the first CSI-RS port matters
 
 % Channel estimate inside the BWP
 % Only change the k index range w.r.t carrier
-Hbwp = H(bwpStart*12 + 1:(bwpStart + reportConfig.NSizeBWP)*12,:,:,:);
+Hbwp = H(bwpStartPos*12 + 1:(bwpStartPos + reportConfig.NSizeBWP)*12,:,:,:);
 
 end
 
