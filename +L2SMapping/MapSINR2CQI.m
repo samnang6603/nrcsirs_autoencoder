@@ -1,4 +1,4 @@
-function [L2SMConfig,cqiIdx,cqiInfo] = SelectCQI(L2SMConfig,carrier,phySigRes,...
+function [L2SMConfig,cqiIdx,cqiInfo] = MapSINR2CQI(L2SMConfig,carrier,phySigRes,...
     xOverhead,sinr,Qm,TCR,blerThresh)
 
 % Check for new CQI Table, 
@@ -8,7 +8,7 @@ isNewTable = isempty(L2SMCQITable) || ~isequaln(L2SMCQITable,selectedCQIQmTCR);
 
 % Check for new indices
 % Extract indices of the corresponding signal resource type
-[~,sigResIndicesInfo] = extractSignalResourceTypeIndices(carrier,phySigRes);
+[~,sigResIndicesInfo] = extractPHYSignalResourceTypeIndices(carrier,phySigRes);
 L2SMIndicesInfo = L2SMConfig.IndicesInfo;
 isNewIndices = isempty(L2SMIndicesInfo) || ~isequal(L2SMIndicesInfo,sigResIndicesInfo);
 
@@ -23,30 +23,31 @@ if hasSomethingChanged
     % Update the L2SM configuration cache
     L2SMConfig.CQI.Table = selectedCQIQmTCR;
     L2SMConfig.CQI.XOverhead = xOverhead;
-    L2SMIndicesInfo = sigResIndicesInfo;
      
-    % G is the physical channel capacities cache
+    % G is the physical channel bit capacities cache
     % Note: G is not Shannon capacity but is mutual information/efficieny
     % lookup values that the L2S mapping interface uses under the hood
-    % In other words, G is precomputed "capacities" that apply to any
+    % In other words, G is precomputed bit "capacities" that apply to any
     % physical channels
     L2SMConfig.CQI.G = [];
 
-    
+    % Physical channel indices information
+    L2SMConfig.IndicesInfo = sigResIndicesInfo;
+
+    % Combine all CQI indices w.r.t codewords
+    L2SMConfig = combineCQICW(L2SMConfig);
+end
+
+% Compute the effective SINR, code rate, code block  BLER and the number of 
+% code block. Then map those parameters to each CQI combination.
+[L2SMConfig,effSINR,codeBLER] = jk;
+
+
 
 
 end
 
-
-
-
-
-
-
-
-end
-
-function [ind,indInfo] = extractSignalResourceTypeIndices(carrier,sigResource)
+function [ind,indInfo] = extractPHYSignalResourceTypeIndices(carrier,sigResource)
 
 sigResType = class(sigResource);
 switch class(sigResType)
@@ -59,11 +60,11 @@ switch class(sigResType)
     case 'nrSRSConfig'   % If is SRS
         [ind,indInfo] = nrSRSIndices(carrier,sigResType);
     otherwise
-        error('Unknown signal resource type')
+        error('Unknown physical signal resource type')
 end
 end
 
-function L2SMConfig = combineCQI(L2SMConfig)
+function L2SMConfig = combineCQICW(L2SMConfig)
 
 cqiTable = L2SMConfig.CQI.Table(:,1);
 

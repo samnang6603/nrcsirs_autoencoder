@@ -6,9 +6,14 @@ function L2SM = Initialize(carrier)
 % (highly-detailed, bit-by-bit RF chain) and large-scale "system" 
 % simulations (whole networks, coverage, mobility, interference). 
 %
+% In other words, it is an abstraction interface between core PHY layer, 
+% aka Link-Level Simulator (LLS) to System-Level Simulator (SLS) network 
+% transport traffics.
+%
 % Instead of running a full PHY sim every time a user clock in the network,
 % we precompute link-level results (e.g., BLER vs SINR curves for each MCS)
-% and then abstract them into a simpler model that system-level sims can use.
+% and then abstract them into a simpler model that system-level sims can 
+% use.
 %
 % How is it used?
 % ---------------
@@ -55,7 +60,10 @@ L2SM.CQI.NBuffer = [];
 L2SM.CQI.EffectiveCodeRate = [];
 L2SM.CQI.DLSCHInfo = [];
 
-% Limited buffer rate matching
+% Limited Buffer Rate Matching (LBRM)
 L2SM.Nref = [];
+
+% Split code block
+L2SM.SplitCodeBlock = false;
 
 end

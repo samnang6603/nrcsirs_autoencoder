@@ -163,7 +163,30 @@ if size(SINRPerSubbandPerCodeword,1) > 1
     SINRPerSubbandPerCodeword = [avgWBNoNaN; SINRPerSubbandPerCodeword];
 end
 
-% Initialize Link to System (L2S) Mapping Interface
+
+% Initialize Link to System (L2S) Mapping Interface, which is an
+% abstraction interface between core PHY layer, aka Link-Level Simulator 
+% (LLS) to System-Level Simulator (SLS) network transport traffics.
+%
+% - The L2S mapping interface compresses the full SINR per RE that were
+% calculated above, into a single effective SINR that captures "how this
+% whole block of coded symbols will behave".
+% - It then uses precomputed AWGN curves: CQI <-> BLER mappings to
+% effectively determine if the reporting code block would survive under
+% a certain BLER situation. For example: "If I tell gNB I want CQI = 10, 
+% will my code block actually survive at 10% BLER?"
+% - Without L2S mapping interface, the RE-level SINR don't connect cleanly
+% to transport BLER probability.
+%
+% The process goes like this:
+% - Precoded SINR path (analogous to raw health metric):
+% Channel + Precoder -> SINR per RE -> Subband/Wideband averaging -> 
+% CQI candidate (raw)
+%
+% - L2S mapping path (analogous to doctor's diagnosis):
+% SINR per RE -> Effective SINR via RBIR/MIESM -> BLER prediction via AWGN 
+% curves -> CQI selection (standardized)
+%
 L2SMConfig = L2SMapping.Initialize(carrier);
 
 % Allocate BLER for all subbands
@@ -185,7 +208,7 @@ BLERAllSubbands = zeros(CQINumSubbands,numCodewords);
         ub = csirsIndSubs_k <= ((sbStartPos + CQINumSubbands(idx))*12);
         sbInd = lb & ub;
         sinrPerREPMITmp = PMIInfo.SINRPerREPMI(sbInd,:,:);
-        [L2SMConfig,cqiSB,sinrPerSBPerCW,blerSB] = selectCQIL2SM(L2SMConfig,...
+        [L2SMConfig,cqiSB,sinrPerSBPerCW,blerSB] = mapCQIL2SM(L2SMConfig,...
             carrier,pdsch,pdschX.XOverhead,sinrPerREPMITmp,reportConfig.CQITable);
     end
 
@@ -410,12 +433,12 @@ pdschX.XOverhead = 0;
 end
 
 
-function SINRPerRBPerCodeword = getSINRPerRB()
-% TBI
+% function SINRPerRBPerCodeword = getSINRPerRB()
+% % TBI
+% 
+% end
 
-end
-
-function [L2SMConfig,cqiIdx,effSINR,trbBLER] = selectCQIL2SM(L2SMConfig,...
+function [L2SMConfig,cqiIdx,effSINR,trbBLER] = mapCQIL2SM(L2SMConfig,...
             carrier,pdsch,XOverhead,sinr,CQITableNumber)
 
 % Allocate outputs
