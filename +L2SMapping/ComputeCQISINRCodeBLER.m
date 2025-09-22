@@ -1,4 +1,4 @@
-function [L2SMConfig,effSINR,cbBLER] = ComputeCQISINRCodeBLER(L2SMConfig,phySigRes,SINR)
+function [L2SMConfig,effSINR,codeBlockBLER] = ComputeCQISINRCodeBLER(L2SMConfig,phySigRes,SINR)
 %ComputeSINR2BLER Compute effective SINR, code rate, code block BLER and
 %the number of code block, all per CQI combination.
 
@@ -34,7 +34,7 @@ end
 
 % Pre-allocate effective SINR and code block BLER
 effSINR = tmpNaN;
-cbBLER = tmpNaN;
+codeBlockBLER = tmpNaN;
 
 % Number of RE per RB
 numREPerRB = L2SMConfig.IndicesInfo.NREPerPRB;
@@ -43,7 +43,7 @@ xOverhead  = L2SMConfig.CQI.XOverhead;
 % If split code block is true then make cell for effSINR and codeBlockBLER
 if (L2SMConfig.SplitCodeBlock)
     effSINR = num2cell(effSINR);
-    cbBLER  = num2cell(cbBLER);
+    codeBlockBLER  = num2cell(codeBlockBLER);
 end
 
 % If cache entries are reinitialized, calculate and cache values that are
@@ -206,18 +206,10 @@ for cwIdx = 1:numCodewords
         esize = size(effSINR(vIdx1,cwIdx));
         thisdlschInfo = L2SMConfig.CQI.DLSCHInfo(vIdx1,cwIdx);
         c = computeCodeBlockBLER(esize,trBlkSize,Qm,ecr,thisdlschInfo);
-
-
-
+        codeBlockBLER(vIdx == nonnanIdx,cwIdx) = c;
     end
-
-
-
     % --------------- End of Code Block BLER Computation --------------
-
 end
-
-
 end
 
 function NBuffer = calculateSoftBufferSize(cbsInfo,Ncb)
@@ -347,8 +339,8 @@ ecr = min(ecr,   1/1024);
 R = round(ecr*1024); % integer code rate: rate/1024
 
 numCodewords  = numel(trBlkSizes);
-maxC = size(effSINR,1);
-codeBlockBLER = zeros(effSINR,numCodewords);
+numCodeBlock = size(effSINR,1);
+cBBLER = zeros(effSINR,numCodewords);
 % For each codeword
 for cwIdx = 1:numCodewords
 
@@ -373,14 +365,64 @@ for cwIdx = 1:numCodewords
     iLUT = thisLUT.data(:,:,iR,iQm,iZc);
 
     % For each code block
-    for cb = 1:maxC
+    for cb = 1:numCodeBlock
         % Interpolate the code block BLER from the effective SINR using
         % the AWGN table (similar logic to SINR)
-        per = interpolatePacketErrorRate(effSINR,iLUT);
+        PER = interpolatePacketErrorRate(effSINR(cb,cwIdx),iLUT);
+        cBBLER(cb,cwIdx) = PER;
     end
 end
 end
 
-function per = interpolatePacketErrorRate(sinr,lut)
-    
+function per = interpolatePacketErrorRate(snr,lut)
+%interpolatePacketErrorRate Compute packet error rate (PER) by
+%interpolating from LUT. 
+%
+% Why packet error rate (PER) is needed for code block BLER?
+% In NR (or LTE), the PHY layer has code blocks (CBs) and then transport 
+% blocks (TBs).
+% Each TB is made of multiple CBs. Each CB has a block error probability 
+% (BLER). Often, we don't have an analytical formula for BLER as a function 
+% of SINR; instead, we have empirical AWGN LUTs.
+%
+% To estimate BLER for a code block, first use a PER curve (or BLER curve) 
+% vs SINR:
+%
+% Input: SINR of that code block
+% Output: estimated BLER
+%
+% So PER/BLER LUT is just the empirical mapping from SINR block error 
+% probability.
+
+% Number of SNR
+numSNR = size(snr,1);
+
+% Check for zero entries and flag it
+idx = 1:numSNR;
+zeroIdx = idx(lut(:,2) == 0);
+zeroFlg = isempty(zeroIdx);
+
+% Discard zero entries after the first
+firstzeroIdx = numSNR*zeroFlag + zeroIdx*(~zeroFlg);
+
+% Only consider snr and hence, per up until first zero index
+snrLUT = lut(1:firstzeroIdx,1);
+perLUT = lut(1:firstzeroIdx,2);
+
+% Interpolation
+% PERs are numbers between 0 and 1 → very small (e.g., 1e-4).
+% Interpolating directly in linear space can be misleading because PER 
+% changes exponentially with SINR.
+% Taking log10(per): convert to log-scale, makes the interpolation more 
+% linear and smooth.
+perLUTlogsc  = log10(perLUT); % Convert PER to log scale 
+perLogscInt = interp1(snrLUT,perLUTlogsc,snr,'linear','extrap');
+per = 10^perLogscInt; % Convert back to linear scale
+
+% At very high SINR, the RBIR lookup saturates, producing a tiny but 
+% nonzero PER. To avoid numerical artifacts and unrealistic micro-error 
+% propagation, treat any PER smaller than 1e-6 as zero (i.e., effectively error-free).
+% For convenience only, 3GPP does not mandate it.
+per(per < 1e-6) = 0;
+per(per > 1) = 1;
 end

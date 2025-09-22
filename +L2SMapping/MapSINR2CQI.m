@@ -40,10 +40,24 @@ end
 
 % Compute the effective SINR, code rate, code block  BLER and the number of 
 % code block. Then map those parameters to each CQI combination.
-[L2SMConfig,effSINR,codeBLER] = jk;
+[L2SMConfig,effSINR,codeBLER] = ComputeCQISINRCodeBLER(L2SMConfig,phySigRes,sinr);
 
+% Calculate transport BLER
+numCodeBlock = L2SMConfig.CQI.C;
 
+% Probability that a single CB is correct
+P_CB_correct = 1 - codeBLER;
 
+% Probability that CBs in the TB are correct (assuming independent CB
+% errors)
+P_allCB_correct = P_CB_correct^numCodeBlock;
+
+% TB has at least one CB error -> TB fails
+transportBLER = 1 - P_allCB_correct;
+
+% Select the CQI combination with the largest BLER less than or
+% equal to the threshold 'blerThresh'
+idxThresh = find(all(transportBLER <= blerThresh,2),1,'last');
 
 end
 
@@ -94,4 +108,8 @@ tableRowCombos = [r,c];
 L2SMConfig.CQI.TableRowCombos = tableRowCombos;
 L2SMConfig.CQI.TableQmValues = QmVal;
 L2SMConfig.CQI.TableModulations = selectedModScheme;
+end
+
+function bestPerCW = pickBestPerCodeword()
+
 end
