@@ -59,6 +59,25 @@ transportBLER = 1 - P_allCB_correct;
 % equal to the threshold 'blerThresh'
 idxThresh = find(all(transportBLER <= blerThresh,2),1,'last');
 
+% If no CQI combination meets BLER criterion, select the first CQI
+% combination and increase the CQI for each codeword so as to meet the BLER
+% criterion
+if isempty(idxThresh)
+    idxThresh = checkIncreaseCQIBLERThreshold(L2SMConfig,transportBLER,blerThresh);
+end
+tableRow = L2SMConfig.CQI.TableRowCombos(idxThresh,:);
+cqiIdx = tableRow - 1;
+% Create CQI info structure
+cqiInfo.EffectiveSINR = effSINR(idxThresh,:);
+cqiInfo.TransportBlockSize = L2SMConfig.CQI.TransportBlockSize(idxThresh,:);
+cqiInfo.Qm = L2SMConfig.CQI.Table(tableRow,1);
+cqiInfo.TargetCodeRate = L2SMConfig.CQI.Table(tableRow,2) / 1024;
+cqiInfo.G = L2SMConfig.CQI.G(idx,:);
+cqiInfo.NBuffer = L2SMConfig.CQI.NBuffer(idx,:);
+cqiInfo.EffectiveCodeRate = L2SMConfig.CQI.EffectiveCodeRate(idxThresh,:);
+cqiInfo.CodeBLER = codeBLER(idxThresh,:);
+cqiInfo.C = numCodeBlock(idxThresh,:);
+cqiInfo.TransportBLER = transportBLER(idxThresh,:);
 end
 
 function [ind,indInfo] = extractPHYSignalResourceTypeIndices(carrier,sigResource)
@@ -110,6 +129,59 @@ L2SMConfig.CQI.TableQmValues = QmVal;
 L2SMConfig.CQI.TableModulations = selectedModScheme;
 end
 
-function bestPerCW = pickBestPerCodeword()
+function bestIdx = checkIncreaseCQIBLERThreshold(L2SMConfig,transportBLER,blerThresh)
 
+% First index always selected
+bestIdx = 1;
+
+numCodewords = size(transportBLER,2);
+if numCodewords > 1
+
+    % Per codeword
+    cwIdxs = 1:numCodewords;
+    for currcwIdx = cwIdxs
+
+        % Get the current CQI combo
+        thisCQIRow = L2SMConfig.CQI.TableRowCombos(bestIdx,:);
+
+        % In multi-codeword (MCW) transmission, you can have 1 or 2 
+        % transport blocks (codewords) per UE.
+        % Each codeword can, in principle, use a different CQI (since 
+        % it may see different SINR, precoding, etc.).
+        %
+        % So evaluate all possible CQI assignments across all codewords. 
+        % But when evaluating one particular codeword, "hold constant" 
+        % the CQI choices of the other codewords and vary only the current one.
+
+        % For the current codeword, collect all CQI table rows where this CW's CQI
+        % varies across all options, while the other CWs keep their current CQIs.
+
+        % Mask of all codeword indices except the current one
+        maskOtherCWs = (cwIdxs ~= currcwIdx);
+
+        % Extract the CQIs of the other codewords from all rows of the combo table
+        otherCWsAllRows = L2SMConfig.CQI.TableRowCombos(:,maskOtherCWs);
+
+        % Extract the CQIs of the other codewords from the current table row
+        otherCWsCurrentRow = thisCQIRow(maskOtherCWs);
+
+        % Compare all rows' "other CWs CQIs" against the current row's values
+        matchMatrix = otherCWsAllRows == otherCWsCurrentRow;
+
+        % Keep only rows where all the other CWs match (row-wise AND)
+        matchingRows = all(matchMatrix,2);
+
+        % Get indices of those rows in the combo table
+        allIdxCQIsThisCW = find(matchingRows);
+
+        % Then find the row that meets the BLER criterion for the current
+        % codeword
+        criterionMet = transportBLER(allIdxCQIsThisCW,currcwIdx) <= blerThresh;
+        bestIdxCQIThisCW = find(criterionMet,1,'last');
+
+        if ~isempty(bestIdxCQIThisCW)
+            bestIdx = allIdxCQIsThisCW(bestIdxCQIThisCW);
+        end
+    end
+end
 end

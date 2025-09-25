@@ -208,7 +208,7 @@ for cwIdx = 1:numCodewords
         c = computeCodeBlockBLER(esize,trBlkSize,Qm,ecr,thisdlschInfo);
         codeBlockBLER(vIdx == nonnanIdx,cwIdx) = c;
     end
-    % --------------- End of Code Block BLER Computation --------------
+    % ---------------- End of Code Block BLER Computation -----------------
 end
 end
 

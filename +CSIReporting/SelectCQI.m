@@ -189,8 +189,7 @@ end
 %
 L2SMConfig = L2SMapping.Initialize(carrier);
 
-% Allocate BLER for all subbands
-BLERAllSubbands = zeros(CQINumSubbands,numCodewords);
+
 
 %if ~inputSINRTable
     % Extract CSI reference resource for selection of CQI in TS 38.214
@@ -199,8 +198,10 @@ BLERAllSubbands = zeros(CQINumSubbands,numCodewords);
         reportConfig,numLayers,dmrsConfig);
     
     % Calculate CQI, effective SINR and BLER per subband
-    SINRPerSubbandPerCodeword = zeros(CQINumSubbands,numCodewords);
+    SINRPerSubbandPerCW = zeros(CQINumSubbands,numCodewords);
     CQIAllSubbands = NaN(CQINumSubbands,numCodewords);
+    BLERAllSubbands = zeros(CQINumSubbands,numCodewords);
+
     sbStartPos = 0;
     for idx = 1:CQINumSubbands
         % Find the subband inside BWP, same logic as prior fcns
@@ -208,9 +209,17 @@ BLERAllSubbands = zeros(CQINumSubbands,numCodewords);
         ub = csirsIndSubs_k <= ((sbStartPos + CQINumSubbands(idx))*12);
         sbInd = lb & ub;
         sinrPerREPMITmp = PMIInfo.SINRPerREPMI(sbInd,:,:);
-        [L2SMConfig,cqiSB,sinrPerSBPerCW,blerSB] = mapCQIL2SM(L2SMConfig,...
+        [L2SMConfig,cqiSB,sinrPerSBPerCW,blerSB] = mapCQIToL2SM(L2SMConfig,...
             carrier,pdsch,pdschX.XOverhead,sinrPerREPMITmp,reportConfig.CQITable);
+        % Fill in array
+        CQIAllSubbands(idx,:) = cqiSB;
+        SINRPerSubbandPerCW(idx,:) = sinrPerSBPerCW;
+        BLERAllSubbands(idx,:) = blerSB;
+
+        % Update sbStartPos
+        sbStartPos = sbStartPos + CQINumSubbands;
     end
+
 
 
 
@@ -432,20 +441,19 @@ pdschX.RVSeq = 0; % To be changed when HARQ is enabled
 pdschX.XOverhead = 0;
 end
 
-
 % function SINRPerRBPerCodeword = getSINRPerRB()
 % % TBI
 % 
 % end
 
-function [L2SMConfig,cqiIdx,effSINR,trbBLER] = mapCQIL2SM(L2SMConfig,...
+function [L2SMConfig,cqiIdx,effSINR,trbBLER] = mapCQIToL2SM(L2SMConfig,...
             carrier,pdsch,XOverhead,sinr,CQITableNumber)
 
 % Allocate outputs
 numCodewords = pdsch.NumCodewords;
 cqiIdx  = NaN(1,numCodewords);
-effSINR = NaN(1,numCodewords);
-trbBLER = NaN(1,numCodewords);
+% effSINR = NaN(1,numCodewords);
+% trbBLER = NaN(1,numCodewords);
 
 % SINR per layer
 sinr = reshape(sinr,[],pdsch.NumLayers);
@@ -471,6 +479,8 @@ blerThreshold = ~isTable3*0.1 + isTable3*1e-5;
 
 [L2SMConfig,cqiIdx,cqiInfo] = L2SMapping.SelectCQI(L2SMConfig,carrier,...
     pdsch,XOverhead,sinr,thisQm,thisTCR,blerThreshold);
+effSINR = db2pow(cqiInfo.effSINR);
+trbBLER = cqiInfo.TransportBLER;
 
 end
 
