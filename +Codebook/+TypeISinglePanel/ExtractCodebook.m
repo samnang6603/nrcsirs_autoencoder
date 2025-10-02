@@ -134,21 +134,22 @@ elseif Pscirs > 2
             i12Len = N2*O2;
             i2Len = 2;
             codebook = zeros(Pscirs,numLayers,i2Len,i11Len,i12Len,i13Len);
+            % Exhuast all permutations of i11, i12, i13 and i2
             for i11 = 0:i11Len-1
                 for i12 = 0:i12Len-1
                     for i13 = 0:i13Len-1
                         for i2 = 0:i2Len-1
                             l  = i11;
-                            lp = i11 + k1(i3+1);
+                            lp = i11 + k1(i3+1); % k1 is the mini LUT, i3 is the stride
                             m  = i12;
                             mp = i12 + k2(i3+1);
                             o  = i13;
                             n  = i2;
                             linStrideIdx = l*N2*O2 + m;
-                            [vlmRestricted,i2Restricted] = isRestricted(codebookSubsetRestriction,linStrideIdx,n,i2Restriction);
+                            [vlmRestricted,i2Restricted] = checkRestriction(codebookSubsetRestriction,linStrideIdx,n,i2Restriction);
                             if ~(vlmRestricted || i2Restricted)
                                 vlm = computeVlm(N1,N2,O1,O2,l,m);
-                                vlpmp = computeVlm(N1,N2,O1,O2,lp,mp);
+                                vlpmp = computeVlm(N1,N2,O1,O2,lp,mp); % v l_prime p_prime
                                 phi_n = exp(1i*pi*n/2);
                                 tmp = [vlm, vlpmp; phi_n*vlm, -phi_n*vlm];
                                 W2 = (1/sqrt(2*Pcsirs))*tmp;
