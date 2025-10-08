@@ -1,4 +1,4 @@
-function [RI,PMISet] = SelectRI(carrier,csirs,csiFeedbackOpts,H,varargin)
+function [RI,PMISet,CQIPMICompParams] = SelectRI(carrier,csirs,csiFeedbackOpts,H,varargin)
 %RISelect Calculates and returns RI and PMISet
 %   Detailed explanation goes here
 
@@ -67,53 +67,91 @@ switch reportConfig.CodebookType
         PMISet.i2 = NaN(3,PMISubbandInfo,NumSubbands);
 end
 
-CQIPMICalcParams = struct();
-CQIPMICalcParams.Carrier = carrier;
-CQIPMICalcParams.CSIRS = csirs;
-CQIPMICalcParams.DMRSConfig = dmrsConfig;
-CQIPMICalcParams.ReportConfig = reportConfig;
-CQIPMICalcParams.Channel = H;
-CQIPMICalcParams.NoiseVariance = nVar;
-CQIPMICalcParams.PossibleRanks = possibleRanks;
-CQIPMICalcParams.PMISubbandInfo = PMISubbandInfo;
+CQIPMICompParams = struct();
+CQIPMICompParams.Carrier = carrier;
+CQIPMICompParams.CSIRS = csirs;
+CQIPMICompParams.DMRSConfig = dmrsConfig;
+CQIPMICompParams.ReportConfig = reportConfig;
+CQIPMICompParams.ChannelResponse = H;
+CQIPMICompParams.NoiseVariance = nVar;
+CQIPMICompParams.PossibleRanks = possibleRanks;
+CQIPMICompParams.PMISubbandInfo = PMISubbandInfo;
+CQIPMICompParams.PMISet = PMISet;
 
 if ~isempty(possibleRanks) && ~isempty(csirsInd)
     switch alg
         case 'MaxSE'
-            [RI,PMISet] = riCalculateCQI(CQIPMICalcParams,PMISet);
+            [RI,PMISet] = riCalculateCQI(CQIPMICompParams);
         case 'MaxSINR'
-            [RI,PMISet] = riCalculatePMI(CQIPMICalcParams,PMISet);
+            [RI,PMISet] = riCalculatePMI(CQIPMICompParams);
         otherwise
             error('Unknown Criteria: Must be MaxSE or MaxSINR');
     end
 end
 end
 
-function [RI,PMISet] = riCalculateCQI(CQIPMICalcParams,PMISet)
+%% Local Helper Fcn
+function [RI,PMISet] = riCalculateCQI(CQIPMICompParams)
 %calculateCQI - CQI Computation
 
-possibleRanks = CQIPMICalcParams.PossibleRanks;
-
+possibleRanks = CQIPMICompParams.PossibleRanks;
+reportConfig = CQIPMICompParams.ReportConfig;
 
 % Extract spectral efficiency from standard CQI table TS 38.211
-cqiTableName = ['CQI' CQIPMICalcParams.ReportConfig.CQITable];
-cqiTable = nrCQITables;
-spectralEfficiency = cqiTable.(cqiTableName).SpectralEfficiency;
+% Make persistent variables to avoid repeating fcn calls on iterations
+persistent cqiTableName spectralEfficiency
+if isempty(spectralEfficiency) || ~strcmpi(cqiTableName,reportConfig.CQITable)
+    cqiTableName = ['CQI' reportConfig.CQITable];
+    cqiTable = nrCQITables;
+    spectralEfficiency = cqiTable.(cqiTableName).SpectralEfficiency;
+end
 
 % Find the best CQI for each possible rank, then select the rank that
 % yields highest coding and modulation efficiencies
 maxRank = max(possibleRanks);
-pmi = 1:maxRank;
 efficiency = NaN(maxRank,1);
-for r = possibleRanks
+
+% Preallocate PMI
+pmi = struct();
+pmi.i1 = [];
+pmi.i2 = [];
+pmi = repmat(pmi,maxRank,1);
+
+for rnk = possibleRanks
     % Find CQI and PMI for current rank
-    CQIPMICalcParams.ThisRank = r;
-    [cqi,pmi(r),cqiInfo] = CSIReporting.SelectCQI(CQIPMICalcParams);
+    CQIPMICompParams.ThisRank = rnk;
+    [cqi,pmi(rnk),cqiInfo] = CSIReporting.SelectCQI(CQIPMICompParams);
 
+    % Extract wideband CQI
+    cqiWideband = cqi(1,:);
 
-
+    % Calculate effficiency if wideband CQI is valid (nonzero and non-NaN)
+    validWBCQIFlag = all(cqiWideband ~= 0);
+    nonnanFlag = ~any(isnan(cqiWideband));
+    if validWBCQIFlag && nonnanFlag
+        % Calculate throughput-related metric via spectral efficiency,
+        % estimated BLER and number of layers
+        blerWB = cqiInfo.TransportBLER(1,:);
+        numCodeword = numel(cqiWideband);
+        codewordLayers = floor((rnk + (0:numCodeword-1))/numCodeword);
+        seVal = spectralEfficiency(cqiWideband+1); % look up spectral efficiency LUT
+        tmp = codewordLayers.*(1 - blerWB)*seVal;
+        efficiency(rnk) = tmp;
+    else
+        efficiency(rnk) = 0;
+    end
 end
 
+% Determine the rank that maximizes spectral efficiency (RI) and its 
+% respective PMI
+[maxEff,RI] = max(efficiency);
+if ~isnan(maxEff)
+    % only for the non-NaN
+    PMISet = pmi(RI);
+else
+    % if NaN, set default output
+    PMISet = CQIPMICompParams.PMISet;
+end
 end
 
 

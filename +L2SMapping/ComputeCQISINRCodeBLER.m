@@ -74,7 +74,7 @@ if isConfigChanged
             % sum(numLayersPerCodeword) or sum(NL) even if its Qm is invalid.
             activeQm = Qm(validQm); % indices of active codewords
             activeQmLen = numel(activeQm);
-            modulations = zeros(size(activeQm)); % preallocate
+            modulations = cell(size(activeQm)); % preallocate
             for b = 1:activeQmLen
                 qmVal = activeQm(b);
                 % find corresponding modulation in the CQI table
@@ -90,14 +90,14 @@ if isConfigChanged
 
             % DL-SCH information
             for b = 1:activeQmLen
-                dlschInfo = nrDLSCHInfo(tbs(c,b),tcr(b));
+                dlschInfo = nrDLSCHInfo(tbs(b),tcr(b));
                 L2SMConfig.CQI.DLSCHInfo(c,b) = dlschInfo;
             end
         end
     end
 
     % Copy number of code blocks from DLSCHInfo into C in main CQI struct
-    L2SMConfig.CQI.C = [L2SMConfig.CQI.DLSCHInfo.C];
+    L2SMConfig.CQI.C(:) = [L2SMConfig.CQI.DLSCHInfo(:).C];
 
     % Get rate matching buffer size
     % See TS 38.212 5.4.2.1
@@ -110,10 +110,10 @@ if isConfigChanged
     end
     for b = 1:length(numBitsPerCBLDPC)
         cbsInfo = L2SMConfig.CQI.DLSCHInfo(b);
-        NBuffer = calculateSoftBufferSize(cbsInfo,numBitsPerCBLDPC);
+        NBuffer = calculateSoftBufferSize(cbsInfo,numBitsPerCBLDPC(b));
         L2SMConfig.CQI.NBuffer(b) = NBuffer;
     end
-    L2SMConfig.CQI.NBuffer = L2SMConfig.NBuffer.L2SMConfig.CQI.C;
+    L2SMConfig.CQI.NBuffer = L2SMConfig.CQI.NBuffer.*L2SMConfig.CQI.C;
 
     % Get effective code rate by considering the rate repetition in the
     % first RV for code rates lower than the mother code rate for the LDPC
@@ -139,7 +139,10 @@ for cwIdx = 1:numCodewords
     % effSINRInputSet
     [u,~,uIdx] = unique(effSINRCalcInputSets,'rows');
 
-    for nonnanIdx = find(~any(isnan(u),2))
+    % Find the input list not containing NaN
+    nonnan_u = find(~any(isnan(u),2));
+
+    for nonnanIdx = 1:length(nonnan_u)
         thisInputSet = u(nonnanIdx,:);
 
         % Calculate effective SINR for the current codeword and map the
@@ -151,7 +154,7 @@ for cwIdx = 1:numCodewords
         
         % Split SINR into code block segment (CBS) so the effective SINR
         % can be calcualted per code block
-        if (L2SMConfig.SplitCodeBlocks)
+        if L2SMConfig.SplitCodeBlock
             % Split Code Block >>>>>>>>>>>>>>> TBI >>>>>>>>>>>>>>>>>>>>>>>>
             %splitSINR = splitCodeBlocks(layerSINR(cwIdx),C); 
         else
@@ -161,10 +164,10 @@ for cwIdx = 1:numCodewords
         % Calculate effective SINR considering rate repetition in the first
         % RV for code rates lower than the mother code rate for the LDPC
         % base graph
-        a = L2SMConfig.Alpha;
-        b = L2SMConfig.Beta;
-        eTmp = effectiveSINRMapping(Qm,splitSINR,a,b,G,NBuffer);
-        effSINR(uIdx==nonnanIdx,cwIdx) = eTmp;
+        a = L2SMConfig.RBIR.Alpha;
+        b = L2SMConfig.RBIR.Beta;
+        esinrTmp = effectiveSINRMapping(Qm,splitSINR,a,b,G,NBuffer);
+        effSINR(uIdx==nonnanIdx,cwIdx) = esinrTmp;
     end
     % ----------------- End of Effective SINR Computation -----------------
 
@@ -178,7 +181,10 @@ for cwIdx = 1:numCodewords
     % codeBlockBLERCalcInputSets
     [v,~,vIdx] = unique(codeBlockBLERCalcInputSets,'rows');
 
-    for nonnanIdx = find(~any(isnan(v),2))
+    % Find the input list not containing NaN
+    nonnan_v = find(~any(isnan(v),2));
+
+    for nonnanIdx = 1:length(nonnan_v)
         thisInputSet = v(nonnanIdx,:);
 
         % Calculate code block BLER for the current codeword and map the
@@ -203,15 +209,16 @@ for cwIdx = 1:numCodewords
         vIdx1 = find(vIdx == nonnanIdx,1);
 
         % Compute the code block BLER
-        esize = size(effSINR(vIdx1,cwIdx));
+        esinrTmp = effSINR(vIdx1,cwIdx);
         thisdlschInfo = L2SMConfig.CQI.DLSCHInfo(vIdx1,cwIdx);
-        c = computeCodeBlockBLER(esize,trBlkSize,Qm,ecr,thisdlschInfo);
+        c = computeCodeBlockBLER(esinrTmp,trBlkSize,Qm,ecr,thisdlschInfo);
         codeBlockBLER(vIdx == nonnanIdx,cwIdx) = c;
     end
     % ---------------- End of Code Block BLER Computation -----------------
 end
 end
 
+%% Local Helper Fcn
 function NBuffer = calculateSoftBufferSize(cbsInfo,Ncb)
 %calculateSoftBufferSize Calculate soft buffer size. Procedure listed in 
 % TS 38.212 5.4.2: 
@@ -232,6 +239,7 @@ NFillterBits = max(min(K,Ncb)-Kd,0);
 NBuffer = Ncb - NFillterBits;
 end
 
+
 function effSINR = effectiveSINRMapping(Qm,SINR,alph,beta,G,NBuffer)
     
 if NBuffer < G
@@ -247,12 +255,16 @@ effSINR = zeros(maxConfigs,numCodewords); % Pre-allocate
 
 % Load RBIR from 802.11-14/1450r0 - Box 0 Calibration Results, extended for
 % 1024 QAM and 4096 QAM. Sourced from MATLAB. RBIR is empirical.
-rbir = load('L2SMapping/rbir.mat');
+% Persistent variable to avoid reloading on every iteration
+persistent rbir
+if isempty(rbir)
+    rbir = load('L2SMapping/rbir.mat');
+end
 
 for cfgIdx = 1:maxConfigs
     for cwIdx = 1:numCodewords
         inTmp = SINR{cfgIdx,cwIdx};
-        numSym = 2^Qm{cwIdx};
+        numSym = 2^Qm(cwIdx);
         sinrTmp = computeEffectiveSINRSubroutine(inTmp,numSym,alph,beta,rbir);
         effSINR(cfgIdx,cwIdx) = sinrTmp;
     end
@@ -317,30 +329,27 @@ end
 
 function cBBLER = computeCodeBlockBLER(effSINR,trBlkSizes,Qm,ecr,dlschInfoList)
 
-% Declare persistent variable to avoid having to reload this structure 
-% everytime
-persistent awgnTables; 
-if isempty(awgnTables)
+% Declare persistent variable to avoid reloading this structure everytime
+persistent awgnLUT; 
+if isempty(awgnLUT)
     % Load and retrieve AWGN table data
     Data  = load('L2SMapping/L2SM.mat');
-    awgnTables = Data.awgnTable;
-    for b = 1:size(awgnTables.BGN,1)
-        for r = 1:size(awgnTables.data(b).R,1)
-            awgnTables.data(b).data(r).data = double(awgnTables.data(b).data(r).data);
+    awgnLUT = Data.awgnTables;
+    for b = 1:size(awgnLUT.BGN,1)
+        for r = 1:size(awgnLUT.data(b).R,1)
+            awgnLUT.data(b).data(r).data = double(awgnLUT.data(b).data(r).data);
         end
     end
 end
 
-awgnLUT = awgnTables;
-
 % Clamp effective code rate to be between 1/1024 and 1023/1024
-ecr = max(ecr,1023/1024);
-ecr = min(ecr,   1/1024);
+ecr = max(ecr,    1/1024);
+ecr = min(ecr, 1023/1024);
 R = round(ecr*1024); % integer code rate: rate/1024
 
 numCodewords  = numel(trBlkSizes);
 numCodeBlock = size(effSINR,1);
-cBBLER = zeros(effSINR,numCodewords);
+cBBLER = zeros(numCodeBlock,numCodewords);
 % For each codeword
 for cwIdx = 1:numCodewords
 
@@ -352,8 +361,8 @@ for cwIdx = 1:numCodewords
     Zc  = dlschInfo.Zc;
 
     % Lookup AWGN table corresponding to BGN, R, Qm, Zc
-    thisLUT = awgnLUT.data(awgn.BGN == BGN); % select BGN as main index
-    R_range = (R >= thisLUT.R(:,1)) & (R <= thisLUT.R(:,2));
+    thisLUT = awgnLUT.data(awgnLUT.BGN == BGN); % select BGN as main index
+    R_range = (R >= thisLUT.R(:,1)) & (R <= thisLUT.R(:,2)); % range of R
     thisLUT = thisLUT.data(R_range);
 
     % Find table with the target Qm and Zc and pick the smallest available 
@@ -362,13 +371,13 @@ for cwIdx = 1:numCodewords
     iR   = find(thisLUT.R >= R,1); % find index of the diff that is 0 and greater than
     iQm  = find(thisLUT.Qm == Qm); % find index corresponding to target Qm
     iZc  = find(thisLUT.Zc == Zc); % find index corresponding to target Zc
-    iLUT = thisLUT.data(:,:,iR,iQm,iZc);
+    iMatLUT = thisLUT.data(:,:,iR,iQm,iZc); % get the LUT numbers corresponding to iR, iQm, iZc
 
     % For each code block
     for cb = 1:numCodeBlock
         % Interpolate the code block BLER from the effective SINR using
         % the AWGN table (similar logic to SINR)
-        PER = interpolatePacketErrorRate(effSINR(cb,cwIdx),iLUT);
+        PER = interpolatePacketErrorRate(effSINR(cb,cwIdx),iMatLUT);
         cBBLER(cb,cwIdx) = PER;
     end
 end
@@ -395,19 +404,23 @@ function per = interpolatePacketErrorRate(snr,lut)
 % probability.
 
 % Number of SNR
-numSNR = size(snr,1);
+numSNR = size(lut,1);
 
 % Check for zero entries and flag it
 idx = 1:numSNR;
 zeroIdx = idx(lut(:,2) == 0);
-zeroFlg = isempty(zeroIdx);
 
 % Discard zero entries after the first
-firstzeroIdx = numSNR*zeroFlag + zeroIdx*(~zeroFlg);
+zeroFlag = isempty(zeroIdx);
+if zeroFlag
+    firstZeroIdx = numSNR;
+else
+    firstZeroIdx = zeroIdx(1);
+end
 
 % Only consider snr and hence, per up until first zero index
-snrLUT = lut(1:firstzeroIdx,1);
-perLUT = lut(1:firstzeroIdx,2);
+snrLUT = lut(1:firstZeroIdx,1);
+perLUT = lut(1:firstZeroIdx,2);
 
 % Interpolation
 % PERs are numbers between 0 and 1 → very small (e.g., 1e-4).
@@ -415,9 +428,9 @@ perLUT = lut(1:firstzeroIdx,2);
 % changes exponentially with SINR.
 % Taking log10(per): convert to log-scale, makes the interpolation more 
 % linear and smooth.
-perLUTlogsc  = log10(perLUT); % Convert PER to log scale 
-perLogscInt = interp1(snrLUT,perLUTlogsc,snr,'linear','extrap');
-per = 10^perLogscInt; % Convert back to linear scale
+perLUTlogscale = log10(perLUT); % Convert PER to log scale 
+perLogscaleInt = interp1(snrLUT,perLUTlogscale,snr,'linear','extrap');
+per = 10^perLogscaleInt; % Convert back to linear scale
 
 % At very high SINR, the RBIR lookup saturates, producing a tiny but 
 % nonzero PER. To avoid numerical artifacts and unrealistic micro-error 

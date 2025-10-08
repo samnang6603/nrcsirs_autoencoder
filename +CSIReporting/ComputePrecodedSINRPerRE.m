@@ -8,12 +8,11 @@ csirsIndSubsLen = length(k);
 SINRPerRE = zeros([csirsIndSubsLen,numLayers,codebookIdxSetSizes]);
 
 % Total number of element in codebook index set size
-numElemIdxSet = numel(codebookIdxSetSizes);
+prodSetSizes = prod(codebookIdxSetSizes);
 
-
-if csirsIndSubsLen > numElemIdxSet
+if csirsIndSubsLen > prodSetSizes
     % If the number of sc in BWP is greater than codebook index set size
-    for idx = 1:numElemIdxSet
+    for idx = 1:prodSetSizes
         % Check if all elements are zeros
         if any(codebook(:,:,idx),'all')
             % Compute linear SINR of all RE that contains CSI-RS per precoding
@@ -29,6 +28,7 @@ end
 
 end
 
+%% Local Helper Fcn
 function sinr = computePrecodedSINRSubroutine(H,W,nVar)
 % Reference
 % nrPrecodedSINR(H,nVar,W) from Mathworks

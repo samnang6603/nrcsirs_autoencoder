@@ -13,8 +13,8 @@ L2SMIndicesInfo = L2SMConfig.IndicesInfo;
 isNewIndices = isempty(L2SMIndicesInfo) || ~isequal(L2SMIndicesInfo,sigResIndicesInfo);
 
 % Check for new xOverhead
-L2SMXOverhead = L2SM.CQI.XOverhead;
-isNewXOverhead = isempty(L2SM.CQI.XOverhead) || ~isequal(L2SMXOverhead,xOverhead);
+L2SMXOverhead = L2SMConfig.CQI.XOverhead;
+isNewXOverhead = isempty(L2SMConfig.CQI.XOverhead) || ~isequal(L2SMXOverhead,xOverhead);
 
 % Check for overall change
 hasSomethingChanged = isNewTable || isNewIndices || isNewXOverhead;
@@ -40,7 +40,8 @@ end
 
 % Compute the effective SINR, code rate, code block  BLER and the number of 
 % code block. Then map those parameters to each CQI combination.
-[L2SMConfig,effSINR,codeBLER] = ComputeCQISINRCodeBLER(L2SMConfig,phySigRes,sinr);
+[L2SMConfig,effSINR,codeBLER] = L2SMapping.ComputeCQISINRCodeBLER(L2SMConfig,...
+    phySigRes,sinr);
 
 % Calculate transport BLER
 numCodeBlock = L2SMConfig.CQI.C;
@@ -50,7 +51,7 @@ P_CB_correct = 1 - codeBLER;
 
 % Probability that CBs in the TB are correct (assuming independent CB
 % errors)
-P_allCB_correct = P_CB_correct^numCodeBlock;
+P_allCB_correct = P_CB_correct.^numCodeBlock;
 
 % TB has at least one CB error -> TB fails
 transportBLER = 1 - P_allCB_correct;
@@ -72,26 +73,27 @@ cqiInfo.EffectiveSINR = effSINR(idxThresh,:);
 cqiInfo.TransportBlockSize = L2SMConfig.CQI.TransportBlockSize(idxThresh,:);
 cqiInfo.Qm = L2SMConfig.CQI.Table(tableRow,1);
 cqiInfo.TargetCodeRate = L2SMConfig.CQI.Table(tableRow,2) / 1024;
-cqiInfo.G = L2SMConfig.CQI.G(idx,:);
-cqiInfo.NBuffer = L2SMConfig.CQI.NBuffer(idx,:);
+cqiInfo.G = L2SMConfig.CQI.G(idxThresh,:);
+cqiInfo.NBuffer = L2SMConfig.CQI.NBuffer(idxThresh,:);
 cqiInfo.EffectiveCodeRate = L2SMConfig.CQI.EffectiveCodeRate(idxThresh,:);
 cqiInfo.CodeBLER = codeBLER(idxThresh,:);
 cqiInfo.C = numCodeBlock(idxThresh,:);
 cqiInfo.TransportBLER = transportBLER(idxThresh,:);
 end
 
+%% Local Helper Fcn
 function [ind,indInfo] = extractPHYSignalResourceTypeIndices(carrier,sigResource)
 
 sigResType = class(sigResource);
-switch class(sigResType)
+switch sigResType
     case 'nrPDSCHConfig' % If is PDSCH
-        [ind,indInfo] = nrPDSCHIndices(carrier,sigResType);
+        [ind,indInfo] = nrPDSCHIndices(carrier,sigResource);
     case 'nrPUSCHConfig' % If is PUSCH
-        [ind,indInfo] = nrPUSCHIndices(carrier,sigResType);
+        [ind,indInfo] = nrPUSCHIndices(carrier,sigResource);
     case 'nrCSIRSConfig' % If is CSI-RS
-        [ind,indInfo] = nrCSIRSIndices(carrier,sigResType);
+        [ind,indInfo] = nrCSIRSIndices(carrier,sigResource);
     case 'nrSRSConfig'   % If is SRS
-        [ind,indInfo] = nrSRSIndices(carrier,sigResType);
+        [ind,indInfo] = nrSRSIndices(carrier,sigResource);
     otherwise
         error('Unknown physical signal resource type')
 end
@@ -106,22 +108,21 @@ QmVal = unique(cqiTable);
 QmVal(isnan(QmVal)) = [];
 
 % Available modulation scheme (constellation mapping) and its mod order
-validModScheme = {'pi/2-BPSK', 'QPSK', '16QAM', '64QAM', '256QAM', '1024QAM'};
-validModOrd    = [          1,      2,       4,       6,        8,       10]; 
+validModScheme = {'pi/2-BPSK'; 'QPSK'; '16QAM'; '64QAM'; '256QAM'; '1024QAM'};
+validModOrd    = [          1;      2;       4;       6;        8;       10]; 
 
 % Find its respective mod scheme to QmVal
 selectedModScheme = cell(length(QmVal),1);
 for b = 1:length(QmVal)
-    selectedIdx = validModOrd == QmVal;
+    selectedIdx = validModOrd == QmVal(b);
     selectedModScheme{b} = validModScheme{selectedIdx};
 end
 
 % Get CQI Table row index combination
 numCQI = size(cqiTable);
 numCodewords = numel(L2SMConfig.IndicesInfo.G);
-tableTotalSize = numCQI^numCodewords;
-[r,c] = ind2sub(numCQI,(1:tableTotalSize).');
-tableRowCombos = [r,c];
+tableTotalSize = numCQI(1)^numCodewords;
+tableRowCombos = ind2sub(numCQI,(1:tableTotalSize).');
 
 % Update CQI combinations and QmVal
 L2SMConfig.CQI.TableRowCombos = tableRowCombos;

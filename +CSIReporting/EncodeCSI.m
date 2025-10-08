@@ -13,6 +13,7 @@ end
 
 end
 
+%% Local Helper Fcn
 function csiReport = selectCSI(carrier,csirs,H,nVar,csiFeedbackOpts)
 %selectCSI Subroutine to run RI-PMI-CQI reporting
 % Adjust noise if practical channel
@@ -25,6 +26,23 @@ end
 
 % Simulate the PMI-CQI for all possible rank and select the best rank
 rankSearchCriterion = 'MaxSE'; % Force max spectral efficiency search
-ri = CSIReporting.SelectRI(carrier,csirs,csiFeedbackOpts,H,nVar,rankSearchCriterion);
+[ri,~,CQIPMICompParams] = CSIReporting.SelectRI(carrier,csirs,csiFeedbackOpts,H,nVar,rankSearchCriterion);
+
+% If no available/possible rank, use rank 1
+if isnan(ri)
+    ri = 1;
+end
+
+% Use the chosen RI to select CQI
+CQIPMICompParams.ThisRank = ri;
+[cqi,pmi,~,pmiInfo] = CSIReporting.SelectCQI(CQIPMICompParams);
+
+% Aggreate CSI results
+csiReport = struct();
+csiReport.CQI = cqi;
+csiReport.RI  = ri;
+csiReport.PMI = pmi;
+csiReport.Precoder = pmiInfo.W;
+csiReport.NSlot = CQIPMICompParams.Carrier.NSlot;
 
 end

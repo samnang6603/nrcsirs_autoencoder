@@ -71,6 +71,7 @@ PMIInfo.CSIRSIndices = [csirsIndBWP_k, csirsIndBWP_l, csirsIndBWP_p]; % CSI-RS R
 
 end
 
+%% Local Helper Fcn
 function reportConfig = configureCodebook(reportConfig,csirs)
 %configureCodebook Configure codebook and validate panel dimensions
 

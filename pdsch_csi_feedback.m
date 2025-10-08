@@ -26,6 +26,7 @@ These are the premises of this experiment:
 clear
 clc
 simParams = struct();
+simParams.NFrames = 2; % Number of 10ms frames
 simParams.SNRIn = -10:5:10;
 
 %% Simulation Toggles
@@ -187,23 +188,40 @@ for snrIdx = 1:length(simParams.SNRIn)
 
     % Copy simParams structure to prevent extra variables affecting
     % simParams
-    simParamsPrivate = simParams;
+    simParamsTmp = simParams;
 
     % CSI Feedback options
-    csiFeedbackOptions = CSIReporting.ConfigureCSIFeedbackOptions(simParamsPrivate,snrIdx);
+    csiFeedbackOptions = CSIReporting.ConfigureCSIFeedbackOptions(simParamsTmp,snrIdx);
 
     % Configure Channel
-    channel = simParamsPrivate.Channel;
+    channel = simParamsTmp.Channel;
     reset(channel);
-    maxChannelDelay = simParamsPrivate.ChannelInformation.MaximumChannelDelay;
+    maxChannelDelay = simParamsTmp.ChannelInformation.MaximumChannelDelay;
 
     % Configure Tx
-    [carrier,encDLSCH,pdsch,pdschextra,csirs,wtx] = TxRx.ConfigureTx(simParamsPrivate);
+    [carrier,encDLSCH,pdsch,pdschextra,csirs,wtx] = TxRx.ConfigureTx(simParamsTmp);
 
     % Configure Rx
-    [decodeDLSCH,timingOffset,N0,noiseEst,csiReports,csiAvailableSlots] = TxRx.ConfigureRx(simParamsPrivate,channel,snrIdx,csiFeedbackOptions);
+    [decodeDLSCH,timingOffset,N0,noiseEst,csiReports,csiAvailableSlots] = TxRx.ConfigureRx(simParamsTmp,channel,snrIdx,csiFeedbackOptions);
 
-    
+    % Total number of simulation slots
+    NSlots = simParamsTmp.NFrames*carrier.SlotsPerFrame;
+
+    % Loop over waveform length
+    for nslot = 0:NSlots-1
+        % Update new slot for carrier
+        carrier.NSlot = nslot;
+
+        % Determine if there is a new CSI report update
+        [isNewCSIReport,repIdx] = ismember(nslot,csiAvailableSlots);
+
+        % If available, use the new CSI report to configure number of 
+        % layers and MCS of the PDSCH
+        if isNewCSIReport
+            
+        end
+
+    end
 
 end
 

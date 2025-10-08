@@ -1,23 +1,23 @@
-function [CQI,PMISet,CQIInfo,PMIInfo] = SelectCQI(CQIPMICalcParams)
+function [CQI,PMISet,CQIInfo,PMIInfo] = SelectCQI(CQIPMICompParams)
 %CQISelect Calculates CQI Based on the given CQI-PMI-RI configurations 
 
 % Get various parameters from CQIPMICalcParams
 
 % Carrier config
-carrier = CQIPMICalcParams.Carrier;
+carrier = CQIPMICompParams.Carrier;
 
 % DMRS Config
-dmrsConfig = CQIPMICalcParams.DMRSConfig;
+dmrsConfig = CQIPMICompParams.DMRSConfig;
 
 % CSI-RS
-csirs = CQIPMICalcParams.CSIRS;
+csirs = CQIPMICompParams.CSIRS;
 
 % Get CSI-RS Indices and nTxAnts
 csirsInd = getCSIRSIndices(carrier,csirs); % [sc, symbol, port]
 numTxAnts = unique(csirs.NumCSIRSPorts); % unique due to possibly more than one type of CSI-RS
 
 % Report Config
-reportConfig = CQIPMICalcParams.ReportConfig;
+reportConfig = CQIPMICompParams.ReportConfig;
 
 % Allocate empty PRG Size if no PRG Size
 reportConfig.PRGSize = [];
@@ -26,13 +26,13 @@ reportConfig.PRGSize = [];
 % This is directly tied to the rank indicated by the UE (RI). Since we sift
 % through each possible valid rank, the nLayer is defined by the current
 % rank we're on.
-numLayers = CQIPMICalcParams.ThisRank;
+numLayers = CQIPMICompParams.ThisRank;
 
 % Get the channel matrix
-H = CQIPMICalcParams.Channel;
+H = CQIPMICompParams.ChannelResponse;
 
 % Get the Noise variance
-nVar = CQIPMICalcParams.NoiseVariance;
+nVar = CQIPMICompParams.NoiseVariance;
 
 % Allocate empty SINRTable
 SINRTable = [];
@@ -41,7 +41,8 @@ inputSINRTable = 0;
 % Find the number of subbands and the size of each subband for the given
 % CQI and PMI configuration.
 [CQISubbandInfo,PMISubbandInfo] = getDLCSISubbandInfo(reportConfig);
-CQINumSubbands = CQISubbandInfo.NumSubband;
+CQINumSubbands = CQISubbandInfo.NumSubbands;
+CQISubbandSizes = CQISubbandInfo.SubbandSizes;
 
 % Number of codewords
 % If nLayer > 4 -> 2 codewords
@@ -142,7 +143,7 @@ for idx = 1:CQINumSubbands
         layerDemapped = nrLayerDemap(SINRPerLayer); % demap the layer
         SINRPerCodeword = zeros(1,length(layerDemapped));
         for b = 1:length(layerDemapped)
-            SINRPerCodeword(b) = sum(layerDemapped); % sum the SINR per layer
+            SINRPerCodeword(b) = sum(layerDemapped{b}); % sum the SINR per layer
         end
     else
         % If there are NaN values, that means no CSI-RS resources present
@@ -190,7 +191,6 @@ end
 L2SMConfig = L2SMapping.Initialize(carrier);
 
 
-
 %if ~inputSINRTable
     % Extract CSI reference resource for selection of CQI in TS 38.214
     % 5.2.2.5
@@ -198,7 +198,7 @@ L2SMConfig = L2SMapping.Initialize(carrier);
         reportConfig,numLayers,dmrsConfig);
     
     % Calculate CQI, effective SINR and BLER per subband
-    SINRPerSubbandPerCW = zeros(CQINumSubbands,numCodewords);
+    SINRPerSubbandPerCodeword = zeros(CQINumSubbands,numCodewords);
     CQIAllSubbands = NaN(CQINumSubbands,numCodewords);
     BLERAllSubbands = zeros(CQINumSubbands,numCodewords);
 
@@ -206,29 +206,76 @@ L2SMConfig = L2SMapping.Initialize(carrier);
     for idx = 1:CQINumSubbands
         % Find the subband inside BWP, same logic as prior fcns
         lb = csirsIndSubs_k >= (sbStartPos*12 + 1);
-        ub = csirsIndSubs_k <= ((sbStartPos + CQINumSubbands(idx))*12);
+        ub = csirsIndSubs_k <= ((sbStartPos + CQISubbandSizes(idx))*12);
         sbInd = lb & ub;
         sinrPerREPMITmp = PMIInfo.SINRPerREPMI(sbInd,:,:);
-        [L2SMConfig,cqiSB,sinrPerSBPerCW,blerSB] = mapCQIToL2SM(L2SMConfig,...
+        [L2SMConfig,cqiSB,sinrPerSBPerCW,blerSB] = mapCQI2L2SM(L2SMConfig,...
             carrier,pdsch,pdschX.XOverhead,sinrPerREPMITmp,reportConfig.CQITable);
         % Fill in array
         CQIAllSubbands(idx,:) = cqiSB;
-        SINRPerSubbandPerCW(idx,:) = sinrPerSBPerCW;
+        SINRPerSubbandPerCodeword(idx,:) = sinrPerSBPerCW;
         BLERAllSubbands(idx,:) = blerSB;
 
         % Update sbStartPos
         sbStartPos = sbStartPos + CQINumSubbands;
     end
-
-
-
-
-
-
-%else
-
 %end
 
+    %if size(SINRPerSubbandPerCodeword,1) > 1 
+        % TBI
+    %end
+
+    % Create output CQI information struct
+    CQIInfo = struct();
+    %CQIInfo.SINRPerRBPerCW = SINRPerRBPerCW; % TBI Info purpose
+    CQIInfo.SINRPerSubbandPerCodeword = SINRPerSubbandPerCodeword;
+
+    % Compute subband differential CQI value for subband mode
+    switch reportConfig.CQIMode
+        case 'Subband'
+            % Compute subband CQI offsets relative to the wideband CQI.
+            %   - CQIAllSubbands(1,:) : wideband CQI (overall BWP quality)
+            %   - CQIAllSubbands(2:end,:) : individual subband CQIs
+            %
+            % The difference gives how each subband deviates from the 
+            % overall BWP quality, i.e., whether that subband's SINR is 
+            % better (+) or worse (–) than average.
+            %
+            % These offsets (deltaCQI) are what the UE actually reports in 
+            % "differential" subband mode, per TS 38.214 Table 5.2.2.1-1, 
+            % to reduce feedback overhead.
+            deltaCQI = CQIAllSubbands(2:end,:) - CQIAllSubbands(1,:);
+
+            % If CQI value is NaN in any subband, consider the
+            % corresponding subband diff CQI as NaN as well. This means
+            % CSI-RS resources do not exist in that subband
+            offsetCQI(isnan(deltaCQI)) = NaN; % diff of NaN; set to NaN (No CSI-RS exist)
+            % TS 38.214 Table 5.2.2.1-1, when CQI is reported 
+            % differentially, the UE doesn't send the absolute CQI per 
+            % subband (too many bits); it sends a code that represents 
+            % how that subband compares to the wideband CQI.
+            offsetCQI(deltaCQI ==  0) = 0; % diff of 0; set to 0 (Equal performance)
+            offsetCQI(deltaCQI ==  1) = 1; % diff of 1; set to 1 (Slightly better)
+            offsetCQI(deltaCQI >=  2) = 2; % diff of 2 or greater; set to 2 (Much better)
+            offsetCQI(deltaCQI <= -1) = 3; % diff of -1; set to 3 (Worse)
+
+            % Form an output CQI array by concatenating wideband CQI value
+            % and subband differential values
+            CQI = [CQIAllSubbands(1,:), offsetCQI(:).'];
+
+            % Update CQI information
+            CQIInfo.SubbandCQI = CQIAllSubbands;
+            CQIInfo.TransportBLER = BLERAllSubbands;
+
+        case 'Wideband'
+            % For 'Wideband' mode, report only the wideband CQI index
+            CQI = CQIAllSubbands(1,:);
+
+            % Update CQI information
+            CQIInfo.SubbandCQI = CQI;
+            CQIInfo.SINRPerSubbandPerCodeword = SINRPerSubbandPerCodeword(1,:);
+            CQIInfo.TransportBLER = BLERAllSubbands;
+    end
 end
 
 
@@ -316,22 +363,23 @@ cqiSubbandInfo = getSubbandInfo(reportConfig,'CQI');
 pmiSubbandInfo = getSubbandInfo(reportConfig,'PMI');
 end
 
-function sbInfo = getSubbandInfo(reportConfig,Mode)
-switch Mode
+function sbInfo = getSubbandInfo(reportConfig,indicatorType)
+
+nSizeBWP  = reportConfig.NSizeBWP;
+nStartBWP = reportConfig.NStartBWP;
+
+switch indicatorType
     case 'CQI'
         ignoreBWPSize = false; % Do not ignore BWP size for CQI
-        NSBPRB = reportConfig.CQISubbandSize;
+        NSBPRB = nSizeBWP;
         reportingMode = reportConfig.CQIMode;
     case 'PMI'
         ignoreBWPSize = reportConfig.IgnoreBWPSize; % Dependent of PRG Size
         NSBPRB = reportConfig.PMISubbandSize;
         reportingMode = reportConfig.PMIMode;
     otherwise
-        error('Unknown Reporting Mode')
+        error('Unknown Indicator')
 end
-
-nSizeBWP  = reportConfig.NSizeBWP;
-nStartBWP = reportConfig.NStartBWP;
 
 % Valid BWP status if Size < 24 and is considered
 validBWPStatus = ~ignoreBWPSize && nSizeBWP < 24;
@@ -429,7 +477,7 @@ pdsch.ReservedRE = [];
 pdsch.ReservedPRB = {};
 
 % DMRS
-pdsch.DMRS.NumCDMGroupsWithoutData = dmrsConfig.NumCDMGroupWithoutData;
+pdsch.DMRS.NumCDMGroupsWithoutData = dmrsConfig.NumCDMGroupsWithoutData;
 pdsch.DMRS.DMRSConfigurationType = dmrsConfig.DMRSConfigurationType;
 pdsch.DMRS.DMRSLength = dmrsConfig.DMRSLength;
 pdsch.DMRS.DMRSAdditionalPosition = dmrsConfig.DMRSAdditionalPosition;
@@ -446,8 +494,8 @@ end
 % 
 % end
 
-function [L2SMConfig,cqiIdx,effSINR,trbBLER] = mapCQIToL2SM(L2SMConfig,...
-            carrier,pdsch,XOverhead,sinr,CQITableNumber)
+function [L2SMConfig,cqiIdx,effSINR,trbBLER] = mapCQI2L2SM(L2SMConfig,...
+            carrier,pdsch,XOverhead,sinr,CQITableName)
 
 % Allocate outputs
 numCodewords = pdsch.NumCodewords;
@@ -459,27 +507,32 @@ cqiIdx  = NaN(1,numCodewords);
 sinr = reshape(sinr,[],pdsch.NumLayers);
 % Convert to dB and handle very small value with eps()
 sinr = 10*log10(sinr + eps(sinr)); 
-nanflg = any(isnan(sinr),2); % test for NaN
+nanflag = any(isnan(sinr),2); % test for NaN
 if any(nanflag,'all')
     return % return if there is NaN values present
 end
 
 % Otherwise, proceed with the non-nan flagged indices
-sinr = sinr(~nanflg,:);
+sinr = sinr(~nanflag,:);
 
-% CQI LUT
-cqiTableObj = nrCQITables;
-thisTable = cqiTableObj.(['CQI',CQITableNumber]);
-thisQm = thisTable.Qm;
-thisTCR = thisTable.TargetCodeRate*1024;
+% CQI LUT 
+% Make persistent variables to avoid repeating calls and only re-create if 
+% CQI table name changes
+persistent thisTable thisQm thisTCR
+if isempty(thisTable) || ~strcmpi(CQITableName,thisTable)
+    cqiTableObj = nrCQITables;
+    thisTable = cqiTableObj.(['CQI',CQITableName]);
+    thisQm = thisTable.Qm;
+    thisTCR = thisTable.TargetCodeRate*1024;
+end
 
 % Use BLER threshold for Table 3 per TS 38.214 5.2.2.1
-isTable3 = strcmpi(CQITableNumber,'Table3');
+isTable3 = strcmpi(CQITableName,'Table3');
 blerThreshold = ~isTable3*0.1 + isTable3*1e-5;
 
-[L2SMConfig,cqiIdx,cqiInfo] = L2SMapping.SelectCQI(L2SMConfig,carrier,...
+[L2SMConfig,cqiIdx,cqiInfo] = L2SMapping.MapSINR2CQI(L2SMConfig,carrier,...
     pdsch,XOverhead,sinr,thisQm,thisTCR,blerThreshold);
-effSINR = db2pow(cqiInfo.effSINR);
+effSINR = db2pow(cqiInfo.EffectiveSINR);
 trbBLER = cqiInfo.TransportBLER;
 
 end
