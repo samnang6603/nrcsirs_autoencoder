@@ -17,7 +17,7 @@ nSizeBWP  = reportConfig.NSizeBWP;
 % Number of Subband per PRB
 nSBPRB = reportConfig.SubbandSize;
 
-if strcmpi(reportConfig.PMIMode,'Wideband') || nSizeBWP < 24
+if strcmpi(reportConfig.PMIMode,'Wideband') || (nSizeBWP < 24)
     % TS 38.214 Table 5.2.1.4-2 states that if BWP is less than 24 PRBs,
     % then we cannot divide BWP into subbands. The number of subbands is
     % unity in this case and the subband size = BWP size

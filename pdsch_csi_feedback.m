@@ -52,6 +52,7 @@ simParams.PDSCH.DMRS.DMRSLength = 2;
 simParams.PDSCH.DMRS.DMRSAdditionalPosition = 1;
 simParams.PDSCH.DMRS.DMRSConfigurationType = 1;
 simParams.PDSCH.DMRS.NumCDMGroupsWithoutData = 2;
+simParams.PDSCH.DMRS.DMRSEnhancedR18 = false;
 
 % Redundancy Version
 simParams.PDSCHExtension.RedundancySequence = 0;
@@ -202,7 +203,7 @@ for snrIdx = 1:length(simParams.SNRIn)
     [carrier,encDLSCH,pdsch,pdschextra,csirs,wtx] = TxRx.ConfigureTx(simParamsTmp);
 
     % Configure Rx
-    [decodeDLSCH,timingOffset,N0,noiseEst,csiReports,csiAvailableSlots] = TxRx.ConfigureRx(simParamsTmp,channel,snrIdx,csiFeedbackOptions);
+    [decDLSCH,timingOffset,N0,noiseEst,csiReports,csiAvailableSlots] = TxRx.ConfigureRx(simParamsTmp,channel,snrIdx,csiFeedbackOptions);
 
     % Total number of simulation slots
     NSlots = simParamsTmp.NFrames*carrier.SlotsPerFrame;
@@ -218,11 +219,69 @@ for snrIdx = 1:length(simParams.SNRIn)
         % If available, use the new CSI report to configure number of 
         % layers and MCS of the PDSCH
         if isNewCSIReport
-            
+            thisCSIReport = csiReports(repIdx);
+            [pdsch.Modulation,pdschextra.TargetCodeRate,wtx] = ...
+                CSIReporting.DecodeCSI(carrier,pdsch,pdschextra,thisCSIReport,csiFeedbackOptions);
+            encDLSCH.TargetCodeRate = pdschextra.TargetCodeRate;
         end
 
-    end
+        % Create resource grid for a slot
+        downlinkGrid = nrResourceGrid(carrier,csirs.NumCSIRSPorts);
 
+        % CSI-RS mapping to the slot resource grid
+        [csirsIndices,csirsInfo] = nrCSIRSIndices(carrier,csirs);
+        csirsSym = nrCSIRS(carrier,csirs);
+        downlinkGrid(csirsIndices) = csirsSym;
+        isCSIRSOn = isempty(csirsIndices);
+
+        % PDSCH reserved REs for CSI-RS
+        pdsch.ReservedRE = csirsIndices - 1;
+
+        % Calculate transport block sizes for PDSCH transmission per slot
+        [pdschIndices,pdschIndicesInfo] = nrPDSCHIndices(carrier,pdsch);
+        trBlkSizes = nrTBS(pdsch.Modulation,pdsch.NumLayers,...
+            length(pdsch.PRBSet),pdschIndicesInfo.NREPerPRB,pdschextra.TargetCodeRate,pdschextra.xOverhead);
+
+            
+        % Generate transport block
+        for cwIdx = 1:pdsch.NumCodewords
+            % Generate new data for current codeword
+            x = randi([0,1],trBlkSizes(cwIdx),1);
+            encDLSCH.setTransportBlock(x,cwIdx-1);
+            decDLSCH.resetSoftBuffer(cwIdx-1);
+        end
+
+        % Encode DL-SCH
+        %RV = zeros(1,pdsch.NumCodewords);
+        xcoded = encDLSCH(pdsch.Modulation,pdsch.NumLayers,...
+            pdschIndicesInfo.G,pdschextra.RedundancySequence);
+
+        % Modulate PDSCH and precode
+        pdschSyms = nrPDSCH(carrier,pdsch,xcoded);
+        % Precode and map to precoding indices
+        [pdschPrcSyms,pdschPrcIndices] = nrPDSCHPrecode(carrier,pdschSyms,pdschIndices,wtx);
+        downlinkGrid(pdschPrcIndices) = pdschPrcSyms;
+
+        % Add DM-RS
+        dmrsSyms = nrPDSCHDMRS(carrier,pdsch);
+        dmrsIndices = nrPDSCHDMRSIndices(carrier,pdsch);
+        [dmrsPrcSyms,dmrsPrcIndices] = nrPDSCHPrecode(carrier,dmrsSyms,dmrsIndices,wtx);
+        downlinkGrid(dmrsPrcIndices) = dmrsPrcSyms;
+
+        % Error if there is any overlapping REs between DM-RS and CSI-RS
+        if any(ismember(dmrsIndices,csirsIndices))
+            error('CSI-RS and PDSCH DM-RS have overlapping RE(s)');
+        end
+
+        % Modulate OFDM Waveform
+        txWaveform = nrOFDMModulate(carrier,downlinkGrid);
+
+        % Pass through channel
+        % Concatenate with zeros to offset channel delay
+        txWaveform = [txWaveform; zeros(maxChannelDelay,simParamsTmp.NTxAnts)]; %#ok<AGROW>
+        [rxWaveform,ofdmResponse,timingOffset] = channel(txWaveform,carrier);
+
+    end
 end
 
 %% Local Functions

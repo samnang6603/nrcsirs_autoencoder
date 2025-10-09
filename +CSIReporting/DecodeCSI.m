@@ -49,8 +49,17 @@ tcr  = thisTable.TargetCodeRate(cqi+1);
 end
 
 function wtx = PMISubband2PRGPrecodingMatrix(carrier,prgBundleSize,reportConfig,W)
+% Map codebook-based precoding matrices from subbands to PRGs
+
+if isempty(reportConfig.NSizeBWP)
+    reportConfig.NSizeBWP = carrier.NSizeGrid;
+end
+if isempty(reportConfig.NStartBWP)
+    reportConfig.NStartBWP = carrier.NStartGrid;
+end
 
 subbandInfo = CSIReporting.GetDLPMISubbandInfo(reportConfig);
 wtx = CSIReporting.ComputePRGPrecoders(carrier,prgBundleSize,W,subbandInfo.SubbandSet);
+wtx = permute(wtx,[2,1,3]);
 
 end
