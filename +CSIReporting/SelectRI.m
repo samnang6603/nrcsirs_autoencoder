@@ -155,8 +155,6 @@ end
 end
 
 
-
-
 function RIRestrictionVector = makeRIVector(reportConfig)
 % Validate and make RI vector with each element corresponds to the index of
 % the individual rank, with max dictates by maxRank

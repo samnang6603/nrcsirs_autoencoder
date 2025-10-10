@@ -281,6 +281,7 @@ for snrIdx = 1:length(simParams.SNRIn)
         txWaveform = [txWaveform; zeros(maxChannelDelay,simParamsTmp.NTxAnts)]; %#ok<AGROW>
         [rxWaveform,ofdmResponse,timingOffset] = channel(txWaveform,carrier);
 
+
     end
 end
 
