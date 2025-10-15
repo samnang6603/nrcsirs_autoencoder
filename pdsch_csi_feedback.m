@@ -41,9 +41,15 @@ simParams.Carrier.SubcarrierSpacing = 15;
 %% PDSCH
 simParams.PDSCH = nrPDSCHConfig;
 simParams.PDSCH.PRBSet = 0:simParams.Carrier.NSizeGrid-1;
-simParams.PDSCH.NumLayers = 2;
+simParams.PDSCH.NumLayers = 1;
 simParams.PDSCH.Modulation = 'QPSK';
 simParams.PDSCH.NID = simParams.Carrier.NCellID;
+
+% PDSCH Symbol allocation
+% Start with the 3rd index (0-based 2). The first two indices are reserved
+% for PDCCH
+symAlloc = [2, simParams.Carrier.SymbolsPerSlot-2]; 
+simParams.PDSCH.SymbolAllocation = symAlloc;
 
 % DM-RS
 simParams.PDSCH.DMRS.DMRSPortSet = 0:simParams.PDSCH.NumLayers-1;
