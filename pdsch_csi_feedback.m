@@ -30,7 +30,7 @@ simParams.NFrames = 2; % Number of 10ms frames
 simParams.SNRIn = -10:5:10;
 
 %% Simulation Toggles
-simParams.PerfectChannelEstimator = false;
+simParams.PerfectChannelEstimator = true;
 simParams.EnableCSIRS = false;
 
 %% SCS Settings
@@ -238,7 +238,7 @@ for snrIdx = 1:length(simParams.SNRIn)
         [csirsIndices,csirsInfo] = nrCSIRSIndices(carrier,csirs);
         csirsSym = nrCSIRS(carrier,csirs);
         downlinkGrid(csirsIndices) = csirsSym;
-        isCSIRSOn = isempty(csirsIndices);
+        isCSIRSOn = ~isempty(csirsIndices);
 
         % PDSCH reserved REs for CSI-RS
         pdsch.ReservedRE = csirsIndices - 1;
@@ -246,7 +246,8 @@ for snrIdx = 1:length(simParams.SNRIn)
         % Calculate transport block sizes for PDSCH transmission per slot
         [pdschIndices,pdschIndicesInfo] = nrPDSCHIndices(carrier,pdsch);
         trBlkSizes = nrTBS(pdsch.Modulation,pdsch.NumLayers,...
-            length(pdsch.PRBSet),pdschIndicesInfo.NREPerPRB,pdschextra.TargetCodeRate,pdschextra.xOverhead);
+            length(pdsch.PRBSet),pdschIndicesInfo.NREPerPRB,...
+            pdschextra.TargetCodeRate,pdschextra.xOverhead);
 
             
         % Generate transport block
@@ -285,8 +286,95 @@ for snrIdx = 1:length(simParams.SNRIn)
         % Pass through channel
         % Concatenate with zeros to offset channel delay
         txWaveform = [txWaveform; zeros(maxChannelDelay,simParamsTmp.NTxAnts)]; %#ok<AGROW>
-        [rxWaveform,ofdmResponse,timingOffset] = channel(txWaveform,carrier);
+        [rxWaveform,ofdmResponse,tOffset] = channel(txWaveform,carrier);
 
+        % Add AWGN to the received waveform
+        noisepwr = N0*randn(size(rxWaveform),like=1i);
+        rxWaveform = rxWaveform + noisepwr;
+
+        % Assume Perfect timing estimate (no synchronization issue)
+        % Timing offset can be added later
+        timingOffset = tOffset;
+        rxWaveform = rxWaveform(1 + timingOffset:end,:);
+
+        % Demodulate OFDM waveform
+        rxDownlinkGrid = nrOFDMDemodulate(carrier,rxWaveform);
+        [nRE,nSym,nRx] = size(rxDownlinkGrid);
+        % Pad zero to compensate for channel timing offset shortening of
+        % vector
+        if nSym < carrier.SymbolsPerSlot
+            zeropad = zeros(nRE,carrier.SymbolsPerSlot-nSym,nRx);
+            rxDownlinkGrid = cat(2,rxDownlinkGrid,zeropad);
+        end
+
+        if simParamsTmp.PerfectChannelEstimator
+            % If perfect channel estimator toggle is ON, then the channel
+            % response estimate is the ofdmResponse from the channel
+            Hest = ofdmResponse;
+
+            % Extract all PDSCH RE from the received downlink grid
+            [pdschRx,pdschHest,~,pdschHestIndices] = nrExtractResources(...
+                pdschIndices,rxDownlinkGrid,Hest);
+
+            % Also precode the channel estimate
+            wtxTmp = permute(wtx,[2, 1, 3]); % 2nd-dim is the number of Rx
+            pdschHest = nrPDSCHPrecode(carrier,pdschHest,...
+                pdschHestIndices,wtxTmp);
+        else
+            % If perfect channel estimator toggle is OFF, then the channel
+            % response estimate is computed via LS algorithm 
+            % (nrChannelEstimate) using the DM-RS symbols
+            [Hest,noiseEst] = nrChannelEstimate(carrier,rxDownlinkGrid,...
+                dmrsIndices,dmrsSyms);
+
+            % Take the average of the noise power across PRGs and layers
+            noiseEst = mean(noiseEst,'all');
+
+            % Extract all PDSCH RE from the received downlink grid
+            [pdschRx,pdschHest] = nrExtractResources(pdschIndices,rxDownlinkGrid,Hest);
+        end
+
+        % Equalize the effect of the channel
+        [pdschEq,eqCSIScaling] = nrEqualizeMMSE(pdschRx,pdschHest,noiseEst);
+
+        % Decode PDSCH
+        [dlschLLR,rxSymbols] = nrPDSCHDecode(carrier,pdsch,pdschEq,noiseEst);
+
+        % Scale LLRs by per-symbol CSI reliability to temper confidence of 
+        % noisy subcarriers.
+        % Ensures the soft bits fed to the decoder reflect actual SINR post 
+        % equalization.
+        eqCSIScaling = nrLayerDemap(eqCSIScaling);
+        for cwIdx = 1:pdsch.NumCodewords
+            Qm = length(dlschLLR{cwIdx})/length(rxSymbols{cwIdx});
+            eqCSITmp = repmat(eqCSIScaling{cwIdx},1,Qm).';
+            %eqCSIScaling{cwIdx} = repmat(eqCSIScaling{cwIdx},1,Qm);
+            dlschLLR{cwIdx} = dlschLLR{cwIdx}.*eqCSITmp(:);
+        end
+
+        % Decode DL-SCH
+        decDLSCH.TransportBlockLength = trBlkSizes;
+        decDLSCH.TargetCodeRate = pdschextra.TargetCodeRate;
+        [decBits,blkErr] = decDLSCH(dlschLLR,pdsch.Modulation,...
+            pdsch.NumLayers,pdschextra.RedundancySequence);
+
+        % Save values to calculate throughput
+        simThroughput(snrIdx) = simThroughput(snrIdx) + sum(~blkErr .* trBlkSizes);
+        maxThroughput(snrIdx) = maxThroughput(snrIdx) + sum(trBlkSizes);
+
+        % CSI measurement and encoding
+        if isCSIRSOn
+
+            % Generate CSI report
+            rxCSIReport = CSIReporting.EncodeCSI(carrier,csirs,Hest,noiseEst,csiFeedbackOptions);
+            reportPeriod = csiFeedbackOptions.CSIReportPeriod(1);
+            reportOffset = csiFeedbackOptions.CSIReportPeriod(2);
+            reportNSlot  = 1 + nslot + simParamsTmp.UEProcessingDelay; % Accounts for UE proc delay
+            csiFeedbackSlot = stepNextCSISlot(reportPeriod,reportOffset,reportNSlot);
+            csiAvailableSlots(end+1) = 1 + csiFeedbackSlot + simParamTmp.BSProcessingDelay; %#ok<SAGROW> Accounts for BS proc delay
+            csiReports(end+1) = rxCSIReport; %#ok<SAGROW>
+
+        end
 
     end
 end
@@ -300,6 +388,14 @@ opt = {  'noCDM',[1,1]
           'CDM8',[2,4]};
 cdmLengths = opt{strcmpi(cdm,opt(:,1)),2};
 end
+
+function csiSlot = stepNextCSISlot(period,offset,nSlot)
+% Output the slot number of the next suitable slot for CSI reporting per
+% CSI report config periodicity
+
+csiSlot = period*ceil((nSlot-offset)/period)+offset;
+end
+
 
 
 
