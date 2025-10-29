@@ -52,12 +52,12 @@ symAlloc = [2, simParams.Carrier.SymbolsPerSlot-2];
 simParams.PDSCH.SymbolAllocation = symAlloc;
 
 % DM-RS
-simParams.PDSCH.DMRS.DMRSPortSet = 0:simParams.PDSCH.NumLayers-1;
+%simParams.PDSCH.DMRS.DMRSPortSet = 0:simParams.PDSCH.NumLayers-1;
 simParams.PDSCH.DMRS.DMRSTypeAPosition = 2;
 simParams.PDSCH.DMRS.DMRSLength = 2;
 simParams.PDSCH.DMRS.DMRSAdditionalPosition = 1;
-simParams.PDSCH.DMRS.DMRSConfigurationType = 1;
-simParams.PDSCH.DMRS.NumCDMGroupsWithoutData = 2;
+simParams.PDSCH.DMRS.DMRSConfigurationType = 2;
+simParams.PDSCH.DMRS.NumCDMGroupsWithoutData = 3;
 simParams.PDSCH.DMRS.DMRSEnhancedR18 = false;
 
 % Redundancy Version
@@ -186,9 +186,13 @@ maxThroughput = zeros(length(simParams.SNRIn),1);
 % Array to store the simulation throughput for all SNR points
 simThroughput = zeros(length(simParams.SNRIn),1);
 % Cell array to store CSI reports per SNR point
-CSIReport = {};
+CSIReportPerSNR = {};
+ThisSlotStatus = struct();
 
 for snrIdx = 1:length(simParams.SNRIn)
+
+    % SNR Index
+    fprintf('\nSimulating for SNR = %.2f\n',simParams.SNRIn(snrIdx));
 
     % Random seed for reproducibility
     rng(0,'twister');
@@ -220,14 +224,15 @@ for snrIdx = 1:length(simParams.SNRIn)
         carrier.NSlot = nslot;
 
         % Determine if there is a new CSI report update
-        [isNewCSIReport,repIdx] = ismember(nslot,csiAvailableSlots);
+        [isNewCSIReport,reportIdx] = ismember(nslot,csiAvailableSlots);
 
         % If available, use the new CSI report to configure number of 
         % layers and MCS of the PDSCH
         if isNewCSIReport
-            thisCSIReport = csiReports(repIdx);
+            thisCSIReport = csiReports(reportIdx);
             [pdsch.Modulation,pdschextra.TargetCodeRate,wtx] = ...
                 CSIReporting.DecodeCSI(carrier,pdsch,pdschextra,thisCSIReport,csiFeedbackOptions);
+            pdsch.NumLayers = size(wtx,1);
             encDLSCH.TargetCodeRate = pdschextra.TargetCodeRate;
         end
 
@@ -367,16 +372,32 @@ for snrIdx = 1:length(simParams.SNRIn)
 
             % Generate CSI report
             rxCSIReport = CSIReporting.EncodeCSI(carrier,csirs,Hest,noiseEst,csiFeedbackOptions);
-            reportPeriod = csiFeedbackOptions.CSIReportPeriod(1);
-            reportOffset = csiFeedbackOptions.CSIReportPeriod(2);
+            reportPeriod = csiFeedbackOptions.CSIReportConfig.Period(1);
+            reportOffset = csiFeedbackOptions.CSIReportConfig.Period(2);
             reportNSlot  = 1 + nslot + simParamsTmp.UEProcessingDelay; % Accounts for UE proc delay
             csiFeedbackSlot = stepNextCSISlot(reportPeriod,reportOffset,reportNSlot);
-            csiAvailableSlots(end+1) = 1 + csiFeedbackSlot + simParamTmp.BSProcessingDelay; %#ok<SAGROW> Accounts for BS proc delay
+            csiAvailableSlots(end+1) = 1 + csiFeedbackSlot + simParamsTmp.BSProcessingDelay; %#ok<SAGROW> Accounts for BS proc delay
             csiReports(end+1) = rxCSIReport; %#ok<SAGROW>
 
         end
+        % Aggregate slot transmission status
+        ThisSlotStatus.SlotNumber = nslot;
+        ThisSlotStatus.HasBlockError = blkErr;
+        ThisSlotStatus.PDSCH = pdsch;
+        ThisSlotStatus.PDSCHExtra = pdschextra;
+        ThisSlotStatus.CodeRate = trBlkSizes./pdschIndicesInfo.G;
+        ThisSlotStatus.IsCSIRSOn = isCSIRSOn;
+        ThisSlotStatus.CSIReportIndex = reportIdx;
+        ThisSlotStatus.CSIReport = csiReports;
+
+        % Display slot status info
+        displaySlotTransmissionStatus(ThisSlotStatus,NSlots,carrier);
 
     end
+
+    % Store CSI Report for each SNR
+    CSIReportPerSNR{snrIdx} = csiReports;  %#ok<SAGROW>
+    
 end
 
 %% Local Functions
@@ -396,8 +417,51 @@ function csiSlot = stepNextCSISlot(period,offset,nSlot)
 csiSlot = period*ceil((nSlot-offset)/period)+offset;
 end
 
+function displaySlotTransmissionStatus(slotStatus,TotalNumSlots,carrier)
 
+pdsch = slotStatus.PDSCH;
+pdschextra = slotStatus.PDSCHExtra;
+thisSlotCSIReport = slotStatus.CSIReport;
+thisSlotCSIReportIndex = slotStatus.CSIReportIndex;
+numCodewords = pdsch.NumCodewords;
+isMultiCodewords = numCodewords > 1;
+codewordLayers = floor((pdsch.NumLayers + (0:numCodewords-1))/numCodewords);
+tcr = pdschextra.TargetCodeRate; % target code rate
+acr = slotStatus.CodeRate; % actual code rate
+modulation = pdsch.Modulation;
 
+for cwIdx = 1:numCodewords
+    if slotStatus.HasBlockError
+        txStatus = 'Transmission Failed';
+    else
+        txStatus = 'Transmission Succeeded';
+    end
+    infoStringCW = sprintf('%s (Layers=%d, %s, TargetCR=%.3f, ActualCR=%.3f)',...
+        txStatus,codewordLayers(cwIdx),modulation{cwIdx},tcr(cwIdx),acr);
 
+    if isMultiCodewords
+        infoToDisplay = sprintf('Codeword #%d %s',cwIdx-1,infoStringCW);
+    else
+        infoToDisplay = infoStringCW;
+    end
+end
 
+csirsInfoStr = [];
+if slotStatus.IsCSIRSOn
+    csirsInfoStr = "CSI-RS Transmission Active. ";
+end
+
+csiFeedBackInfoStr = [];
+nslot = carrier.NSlot;
+if nslot == 0
+    % First ever slot
+    csiFeedBackInfoStr = "Using initial CSI | ";
+elseif thisSlotCSIReportIndex > 0
+    csiFeedBackInfoStr = sprintf("Using CSI from NSlot: #%2d",thisSlotCSIReport(thisSlotCSIReportIndex).NSlot);
+end
+
+strtmp = join([infoToDisplay,csiFeedBackInfoStr,csirsInfoStr]);
+fprintf("(%5.2f%%) NSlot: #%2d: %s \n",100*(nslot+1)/TotalNumSlots,nslot,strtmp);
+
+end
 

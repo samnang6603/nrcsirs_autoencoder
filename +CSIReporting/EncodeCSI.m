@@ -3,12 +3,12 @@ function csiReport = EncodeCSI(carrier,csirs,Hest,nVar,csiFeedbackOpts)
 
 switch csiFeedbackOpts.CSIReportConfig.Mode
     case 'AI CSI compression'
-
+        % net compression here
     case 'RI-PMI-CQI'
         % Using 3GPP TS 38.211/214 RI-PMI-CQI Selection
         csiReport = selectCSI(carrier,csirs,Hest,nVar,csiFeedbackOpts);
     otherwise
-
+        error('Invalid CSI Report Mode')
 end
 
 end
