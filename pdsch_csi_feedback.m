@@ -27,7 +27,7 @@ clear
 clc
 simParams = struct();
 simParams.NFrames = 2; % Number of 10ms frames
-simParams.SNRIn = -10:5:10;
+simParams.SNRIn = -10:5:20;
 
 %% Simulation Toggles
 simParams.PerfectChannelEstimator = true;
@@ -398,6 +398,9 @@ for snrIdx = 1:length(simParams.SNRIn)
     % Store CSI Report for each SNR
     CSIReportPerSNR{snrIdx} = csiReports;  %#ok<SAGROW>
     
+    % Display throughput for each SNR
+    displayThroughput(simParamsTmp,snrIdx,simThroughput);
+
 end
 
 %% Local Functions
@@ -462,6 +465,16 @@ end
 
 strtmp = join([infoToDisplay,csiFeedBackInfoStr,csirsInfoStr]);
 fprintf("(%5.2f%%) NSlot: #%2d: %s \n",100*(nslot+1)/TotalNumSlots,nslot,strtmp);
+
+end
+
+function displayThroughput(simParams,snrIdx,throughput)
+
+frames = simParams.NFrames;
+snrVal = simParams.SNRIn(snrIdx);
+mbps = (throughput(snrIdx)/(simParams.NFrames*10e-3))/1e6;
+
+fprintf('\nThroughput at SNR = %.1f dB for %d frames: %.3f Mbps\n',snrVal,frames,mbps);
 
 end
 

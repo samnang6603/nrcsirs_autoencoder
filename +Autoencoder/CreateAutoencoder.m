@@ -1,13 +1,10 @@
-% Prototype of Autoencoder for CSI-RS Report Feedback
+function aen = CreateAutoencoder
+%CreateAutoencoder creates autoencoder network based on a prototype from
+%   MATLAB example.
+%
+%
 % Reference:
 % 1. https://www.mathworks.com/help/releases/R2025a/5g/ug/csi-feedback-with-autoencoders.html
-% 2. Zimaglia, Elisa, Daniel G. Riviello, Roberto Garello, and Roberto Fantini.
-%   "A Novel Deep Learning Approach to CSI Feedback Reporting for NR 5G Cellular Systems." 
-%   In 2020 IEEE Microwave Theory and Techniques in Wireless Communications (MTTW), 
-%   47–52. Riga, Latvia: IEEE, 2020.
-%   https://doi.org/10.1109/MTTW51045.2020.9245055.
-
-trainingToggle = true;
 
 aen = dlnetwork();
 
@@ -84,13 +81,4 @@ finalConvSig = [
 aen = addLayers(aen,finalConvSig);
 aen = connectLayers(aen,'Dec_LeakyRelu_S2_3','Dec_Conv_Final');
 
-figure
-plot(aen)
-title('Autoencoder Prototype Structure (MATLAB Example)')
-
-if trainingToggle
-    [HTarget,options] = Autoencoder.GenerateData();
-
 end
-
-
