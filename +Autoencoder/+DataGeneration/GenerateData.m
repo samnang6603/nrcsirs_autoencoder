@@ -1,4 +1,4 @@
-function [HTargetTensor,options] = GenerateData(numSamples,carrier,channel,options)
+function [HTargetTensor,HTargetTensorpp,options] = GenerateData(numSamples,carrier,channel,options)
 %GenerateData produces N channel estimate frames using the 5G NR carrier
 %   (CR) and channel model (CH). The output HTarget is a tensor of shape 
 %   [Ndelay × NTx × 2(I/Q) × Nrx], where:
@@ -81,26 +81,33 @@ else
     processedFileNameBase = [];
 end
 
-% Pre-allocate target tensor
-HTargetTensor = zeros(numSubcarriers,options.NumSlotsPerFrame*symbolsPerSlot,nRx,nTx,numFrames);
+% Pre-allocate target tensors
+HTargetTensor = zeros(numSubcarriers,options.NumSlotsPerFrame*symbolsPerSlot,nRx,nTx,numFrames,like=1i);
+HTargetTensorpp = zeros(options.MaxDelay,nTx,2,nRx,options.NumSlotsPerFrame*numFrames);
 
-for fr = 1:numFrames
+for frIdx = 1:numFrames
     channelTmp = clone(channel);
 
     % Generate channel response tensor
     HestTensor = estimateChannelResponse(channelTmp,carrier,options);
 
     % Fill in H target tensor
-    HTargetTensor(:,:,:,:,fr) = HestTensor;
+    HTargetTensor(:,:,:,:,frIdx) = HestTensor;
 
-    save(processedFileNameBase + "_" + fr,'HestTensor');
+    %save(processedFileNameBase + "_" + fr,'HestTensor');
+
+    % Preprocess channel response tensor
+    HestTensorpp = preprocessChannelResponse(HestTensor,options);
+
+    % Fill in preprocessed H target tensor
+    HTargetTensorpp(:,:,:,:,frIdx) = HestTensorpp;
 end
 
 
-
 end
 
 
+%% Local Helper fcn
 function HestTensor = estimateChannelResponse(channel,carrier,options)
 %EstimateChannelResponse Channel response estimation for data generation.
 %   Generates one frame of perfect channel estimate that contains N slots
@@ -113,7 +120,7 @@ slotsPerFrame = options.NumSlotsPerFrame;
 symsPerSlot = carrier.SymbolsPerSlot;
 if slotsPerFrame < symsPerSlot
     % If smaller, we're only simulating less than one full frame
-    channel.NumTimeSamples = options.SamplesPerSlot*slotsPerFrame;
+    %channel.NumTimeSamples = options.SamplesPerSlot*slotsPerFrame;
 
     % In this case, only generate once from the subroutine
     HestTensor = channelEstimationSubroutine(channel,carrier,options.ZeroTimingOffset);
@@ -169,8 +176,70 @@ Hest = nrPerfectChannelEstimate(carrier,pathGains,pathFilters,offset,sampleTimes
 end
 
 function Hestpp = preprocessChannelResponse(Hest,options)
+%preprocessChannelResponse Prepares the channel estimate 'Hest' by
+%   decimating via 2D-FFT and 2D-IFFT. The preprocessed channel estimate
+%   has maxDelay samples and is a real-valued tensor.
+%   Hestpp is maxDelay x nTx x 2(I/Q) x nRx x Nslots, where 
+%   Nslots = numSyms/14
+%
+%   This procedure is similar to Principle Components Analysis (PCA)
+%
 
+maxDelay = options.MaxDelay;
+[numSubcarrier,numSyms,nRx,nTx] = size(Hest);
+% Compute center of delay spread band. Keep only the taps that matter and
+% discard channel where magnitude is close to 0. This is delay-domain
+% sparsity exploitation.
+midpt = floor(numSubcarrier/2);
+lb = midpt - (numSubcarrier - maxDelay)/2 + 1;
+ub = midpt + (numSubcarrier - maxDelay)/2;
 
+% Average over symbols
+symsPerSlot = 14;
+Nslots = numSyms/symsPerSlot;
+HTmp = reshape(Hest,numSubcarrier,Nslots,symsPerSlot,nRx,nTx);
+% Remove fast fading noise and keeps long-term multipath structure
+H = mean(HTmp,3); % 3rd dim is symsPerSlot dim
+H = permute(H, [1, 5, 4, 2, 3]); % rearrange dims
+
+% Pre-allocate
+Hestpp = zeros(maxDelay,nTx,2,nRx,Nslots,like=1i);
+
+% Per Rx antenna, decimate over subcarriers using 2D-FFT
+for slotIdx = 1:Nslots
+    % 2D-FFT: go from freq/spatial(antenna) to delay/angle(spatial dir) 
+    % domain
+    Hfft = fft2(H(:,:,:,slotIdx));
+
+    % Truncate
+    HTruncTmp = Hfft([1:lb-1, ub+1:end],:,:);
+
+    switch options.DataDomain
+        case 'Frequency-Spatial'
+            % Transform back if freq/spatial is desired
+            HTrunc = ifft2(HTruncTmp);
+        otherwise
+            % Keep as is iff delay/spatial is desired
+            HTrunc = HTruncTmp;
+    end
+
+    % Extract Real (I) and Imag (Q) components
+    HI = real(HTrunc); % I
+    HQ = imag(HTrunc); % Q
+
+    if options.Normalization
+        avgVal = options.MeanValue;
+        stdVal = options.StdValue;
+        targetStd = options.TargetStdValue;
+        % Normalize
+        Hestpp(:,:,1,:,slotIdx) = ((HI - avgVal)/stdVal)*targetStd + 0.5;
+        Hestpp(:,:,2,:,slotIdx) = ((HQ - avgVal)/stdVal)*targetStd + 0.5;
+    else
+        % Keep as is
+        Hestpp(:,:,1,:,slotIdx) = HI;
+        Hestpp(:,:,1,:,slotIdx) = HQ;
+    end
+end
 
 end
 

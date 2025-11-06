@@ -7,6 +7,8 @@
 %   47–52. Riga, Latvia: IEEE, 2020.
 %   https://doi.org/10.1109/MTTW51045.2020.9245055.
 
+clear, clc
+
 trainingToggle = true;
 
 aen = dlnetwork();
@@ -89,8 +91,43 @@ plot(aen)
 title('Autoencoder Prototype Structure (MATLAB Example)')
 
 if trainingToggle
-    [HTarget,options] = Autoencoder.GenerateData();
+    % Carrier
+    simParams.Carrier = nrCarrierConfig;
 
+    % Antenna Configurations
+    simParams.TransmitAntennaArray.NumPanels        = 1; % Number of transmit panels in horizontal dimension (Ng)
+    simParams.TransmitAntennaArray.PanelDimensions  = [1, 1]; % Number of columns and rows in the transmit panel (N1, N2)
+    simParams.TransmitAntennaArray.NumPolarizations = 2; % Number of transmit polarizations
+    simParams.ReceiveAntennaArray.NumPanels         = 1; % Number of receive panels in horizontal dimension (Ng)
+    simParams.ReceiveAntennaArray.PanelDimensions   = [1, 1]; % Number of columns and rows in the receive panel (N1, N2)
+    simParams.ReceiveAntennaArray.NumPolarizations  = 2; % Number of receive polarizations
+    simParams.NTxAnts = prod([simParams.TransmitAntennaArray.NumPanels,...
+        simParams.TransmitAntennaArray.PanelDimensions,...
+        simParams.TransmitAntennaArray.NumPolarizations]);
+    simParams.NRxAnts = prod([simParams.ReceiveAntennaArray.NumPanels,...
+        simParams.ReceiveAntennaArray.PanelDimensions,...
+        simParams.ReceiveAntennaArray.NumPolarizations]);
+
+    % Channel Delay Profile
+    simParams.DelayProfile = 'CDL-C';   % 'CDL-' or 'TDL-'
+    simParams.DelaySpread = 300e-9;     % s
+    simParams.MaximumDopplerShift = 5;  % Hz
+    simParams.Channel = Channel.CreateChannel(simParams);
+    simParams.ChannelInformation = info(simParams.Channel);
+
+    % Create Channel
+    channel = Channel.CreateChannel(simParams);
+    channelInfo = info(channel);
+
+    % Autoencoder Options
+    aenOptions.DataDomain = 'Frequency-Spatial';
+    aenOptions.TruncationFactor = 10;
+    aenOptions.ZeroTimingOffset = true;
+    aenOptions.SaveData = false;
+
+    numSamples = 1500;
+    [~,HTargetpp,aenOptions] = Autoencoder.DataGeneration.GenerateData(numSamples,...
+        simParams.Carrier,channel,aenOptions);
 end
 
 

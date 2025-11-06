@@ -2,8 +2,9 @@ function csiReport = EncodeCSI(carrier,csirs,Hest,nVar,csiFeedbackOpts)
 %EncodeCSI Prepares and encodes CSI
 
 switch csiFeedbackOpts.CSIReportConfig.Mode
-    case 'AI CSI compression'
+    case 'AUTOENCODER'
         % net compression here
+        aen = createAutoencoder(csiFeedbackOpts);
     case 'RI-PMI-CQI'
         % Using 3GPP TS 38.211/214 RI-PMI-CQI Selection
         csiReport = selectCSI(carrier,csirs,Hest,nVar,csiFeedbackOpts);
@@ -44,5 +45,28 @@ csiReport.RI  = ri;
 csiReport.PMI = pmi;
 csiReport.Precoder = pmiInfo.W;
 csiReport.NSlot = CQIPMICompParams.Carrier.NSlot;
+
+end
+
+function aen = createAutoencoder(csiFeedbackOpts)
+%createAutoencoder Create autoencoder model based on the specified model
+%   name. 'Base' is the default model from MATLAB example
+
+modelName = csiFeedbackOpts.CSIReportConfig.Autoencoder.ModelName;
+modelFileName = ['+Autoencoder\AvailableModels\',modelName,'.mat'];
+
+if exist(modelFileName,'dir')
+    load('modelFileName','aen');
+    return
+end
+
+switch modelName
+    case 'Base'
+        aen = Autoencoder.CreateModel.Base();
+    otherwise
+        error('Unknown Autoencoder model name')
+
+end
+
 
 end

@@ -135,7 +135,7 @@ cdmLengths = getCSIRSCDMLengths(simParams.CSIRS);
 
 %% CSI Report
 simParams.CSIReportConfig = struct();
-simParams.CSIReportConfig.Mode = 'RI-PMI-CQI';
+simParams.CSIReportConfig.Mode = 'AUTOENCODER'; %'RI-PMI-CQI';
 simParams.CSIReportConfig.Period = [5,0];
 
 switch upper(simParams.CSIReportConfig.Mode)
@@ -164,7 +164,8 @@ switch upper(simParams.CSIReportConfig.Mode)
 
         end
     case 'AUTOENCODER'
-        simParams.Autoencoder = 'csiTrainedNetwork.mat';
+        %simParams.CSIReportConfig.Autoencoder = 'csiTrainedNetwork.mat';
+        simParams.CSIReportConfig.Autoencoder.ModelName = 'Base';
     otherwise
         simParams.CSIReportConfig.Mode = 'PERFECT CSI';
 end

@@ -1,4 +1,4 @@
-function aen = CreateAutoencoder
+function aen = Base
 %CreateAutoencoder creates autoencoder network based on a prototype from
 %   MATLAB example.
 %
