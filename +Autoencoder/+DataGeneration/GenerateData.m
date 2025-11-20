@@ -53,7 +53,6 @@ options.NumSlotsPerFrame = 1;
 options.Preprocess = true;
 options.ResetChannelPerFrame = true;
 options.Normalization = false;
-options.Verbose = true;
 
 % Calculate the number of required frames to accomodate data generation for
 % the given configurations
@@ -86,6 +85,11 @@ HTargetTensor = zeros(numSubcarriers,options.NumSlotsPerFrame*symbolsPerSlot,nRx
 HTargetTensorpp = zeros(options.MaxDelay,nTx,2,nRx,options.NumSlotsPerFrame*numFrames);
 
 for frIdx = 1:numFrames
+
+    if options.Verbose && (rem(frIdx,100) == 0 || frIdx == 1 || frIdx == numFrames)
+        fprintf('Processing frame #%d of %d \n',frIdx,numFrames);
+    end
+
     channelTmp = clone(channel);
 
     % Generate channel response tensor
@@ -102,7 +106,7 @@ for frIdx = 1:numFrames
     % Fill in preprocessed H target tensor
     HTargetTensorpp(:,:,:,:,frIdx) = HestTensorpp;
 end
-
+fprintf('Data Generation Completed \n')
 
 end
 
@@ -118,9 +122,11 @@ function HestTensor = estimateChannelResponse(channel,carrier,options)
 % frame?
 slotsPerFrame = options.NumSlotsPerFrame;
 symsPerSlot = carrier.SymbolsPerSlot;
+channel.SampleDensity = options.ChannelSampleDensity;
+
 if slotsPerFrame < symsPerSlot
     % If smaller, we're only simulating less than one full frame
-    %channel.NumTimeSamples = options.SamplesPerSlot*slotsPerFrame;
+    channel.NumTimeSamples = options.SamplesPerSlot*slotsPerFrame;
 
     % In this case, only generate once from the subroutine
     HestTensor = channelEstimationSubroutine(channel,carrier,options.ZeroTimingOffset);
@@ -158,8 +164,6 @@ function Hest = channelEstimationSubroutine(channel,carrier,zto)
 %channelEstimationSubroutine subroutine to help with channele response
 %   estimation for different slots
 
-channel.ChannelResponseOutput = 'path-gains';
-channel.ChannelFiltering = false;
 [pathGains,sampleTimes] = channel();
 pathFilters = channel.getPathFilters();
 
@@ -231,13 +235,13 @@ for slotIdx = 1:Nslots
         avgVal = options.MeanValue;
         stdVal = options.StdValue;
         targetStd = options.TargetStdValue;
-        % Normalize
+        % Normalize using standard Z-score and rescaling std
         Hestpp(:,:,1,:,slotIdx) = ((HI - avgVal)/stdVal)*targetStd + 0.5;
         Hestpp(:,:,2,:,slotIdx) = ((HQ - avgVal)/stdVal)*targetStd + 0.5;
     else
         % Keep as is
         Hestpp(:,:,1,:,slotIdx) = HI;
-        Hestpp(:,:,1,:,slotIdx) = HQ;
+        Hestpp(:,:,2,:,slotIdx) = HQ;
     end
 end
 

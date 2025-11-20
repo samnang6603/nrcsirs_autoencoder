@@ -86,9 +86,9 @@ finalConvSig = [
 aen = addLayers(aen,finalConvSig);
 aen = connectLayers(aen,'Dec_LeakyRelu_S2_3','Dec_Conv_Final');
 
-figure
-plot(aen)
-title('Autoencoder Prototype Structure (MATLAB Example)')
+%figure
+%plot(aen)
+%title('Autoencoder Prototype Structure (MATLAB Example)')
 
 if trainingToggle
     % Carrier
@@ -112,22 +112,75 @@ if trainingToggle
     simParams.DelayProfile = 'CDL-C';   % 'CDL-' or 'TDL-'
     simParams.DelaySpread = 300e-9;     % s
     simParams.MaximumDopplerShift = 5;  % Hz
-    simParams.Channel = Channel.CreateChannel(simParams);
-    simParams.ChannelInformation = info(simParams.Channel);
 
     % Create Channel
-    channel = Channel.CreateChannel(simParams);
-    channelInfo = info(channel);
+    rng(0);
+    % channel = Channel.CreateChannel(simParams);
+    % channel.ChannelFiltering = false;
+    % channel.ChannelResponseOutput = 'path-gains';
+    % channelInfo = info(channel);
+    channel = nrCDLChannel;
+    channel.DelayProfile = 'CDL-C';
+    channel.DelaySpread = 300e-9;       % s
+    channel.MaximumDopplerShift = 5;   % Hz
+    channel.RandomStream = "Global stream";
+    channel.TransmitAntennaArray.Size = [1 1 2 1 1];
+    channel.ReceiveAntennaArray.Size = [1 1 2 1 1];
+    channel.ChannelFiltering = false;           % No filtering
 
     % Autoencoder Options
     aenOptions.DataDomain = 'Frequency-Spatial';
     aenOptions.TruncationFactor = 10;
     aenOptions.ZeroTimingOffset = true;
     aenOptions.SaveData = false;
+    aenOptions.Verbose = true;
 
+    % Generate channel response data
     numSamples = 1500;
     [~,HTargetpp,aenOptions] = Autoencoder.DataGeneration.GenerateData(numSamples,...
         simParams.Carrier,channel,aenOptions);
+
+    % Each frame has a data for nRx 
+    [maxDelay,nTx,NIQ,nRx,Nframes] = size(HTargetpp);
+
+    % Combine frames and nRx
+    HTargetpp = reshape(HTargetpp,maxDelay,nTx,NIQ,nRx*Nframes);
+
+    % Calculate the average and standard deviation to normalize the data
+    avgVal = mean(HTargetpp,'all');
+    stdVal = std(HTargetpp,[],'all');
+
+    % Separate data into training, validation and testing
+    numDataSet = size(HTargetpp,4);
+    numTrainDS = 0.6*numDataSet;
+    numValidDS = 0.15*numDataSet;
+    numTestDS  = 0.25*numDataSet;
+
+    % Target Std of value of 0.0212, which will restrict data to range
+    % [-0.5 , 0.5]
+    trainInd = 1:numTrainDS;
+    validInd = numTrainDS + (1:numValidDS);
+    testInd  = numTrainDS + numValidDS + (1:numTestDS);
+    HTrain = (HTargetpp(:,:,:,trainInd) - avgVal)/stdVal*0.0212 + 0.5;
+    HValid = (HTargetpp(:,:,:,validInd) - avgVal)/stdVal*0.0212 + 0.5;
+    HTest  = (HTargetpp(:,:,:,testInd)  - avgVal)/stdVal*0.0212 + 0.5;
+
+    % Update aen options
+    aenOptions.AvgVal = avgVal;
+    aenOptions.StdVal = stdVal;
+    aenOptions.TargetStd = 0.0212;
+
+    
+    
+
+
+
+
+    
+
+
+
+
 end
 
 
