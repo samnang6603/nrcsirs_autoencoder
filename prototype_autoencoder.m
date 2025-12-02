@@ -11,10 +11,10 @@ clear, clc
 
 trainingToggle = true;
 
-aen = dlnetwork();
+%aen = dlnetwork();
 
 encoderLayers = [
-    imageInputLayer([7, 2, 2],Normalization='none',Name='Enc_Input')
+    imageInputLayer([28, 2, 2],Normalization='none',Name='Enc_Input')
     convolution2dLayer([3, 3],2,Padding='same',Name='Enc_Conv')
     batchNormalizationLayer(Epsilon=0.001,Name='Enc_BN')
     leakyReluLayer(0.3,Name='Enc_LeakyRelu')
@@ -23,13 +23,15 @@ encoderLayers = [
     sigmoidLayer(Name='Enc_Sig')
     ];
 
-aen = addLayers(aen,encoderLayers);
+%aen = addLayers(aen,encoderLayers);
+
+tmp = [fullyConnectedLayer(28*2*2,Name='Dec_FCN');
+    functionLayer(@(x)dlarray(reshape(x,28,2,2,[]),'SSCB'),Formattable=true,...
+                  Acceleratable=true,Name='Dec_Reshape_S1')];
+
+aen = dlnetwork([encoderLayers; tmp]);
 
 decoderStage1Layers = [
-    fullyConnectedLayer(28,Name='Dec_FCN')
-    functionLayer(@(x)dlarray(reshape(x,7,2,2,[]),'SSCB'),Formattable=true,...
-                  Acceleratable=true,Name='Dec_Reshape_S1')
-
     convolution2dLayer([3, 3],8,Padding='same',Name='Dec_Conv_S1_1')
     batchNormalizationLayer(Epsilon=0.001,Name='Dec_BN_S1_1')
     leakyReluLayer(0.3,Name='Dec_LeakyRelu_S1_1')
@@ -44,7 +46,7 @@ decoderStage1Layers = [
     ];
 
 aen = addLayers(aen,decoderStage1Layers);
-aen = connectLayers(aen,'Enc_Sig','Dec_FCN');
+aen = connectLayers(aen,'Dec_Reshape_S1','Dec_Conv_S1_1');
 addStage1Layer = additionLayer(2,Name='Add_S1_oBN3_To_S1_oReshape');
 aen = addLayers(aen,addStage1Layer);
 aen = connectLayers(aen,'BN_S1_3','Add_S1_oBN3_To_S1_oReshape/in1');
@@ -137,38 +139,89 @@ if trainingToggle
 
     % Generate channel response data
     numSamples = 1500;
-    [~,HTargetpp,aenOptions] = Autoencoder.DataGeneration.GenerateData(numSamples,...
-        simParams.Carrier,channel,aenOptions);
+    [~,Hpp,aenOptions] = Autoencoder.DataGeneration.GenerateData( ...
+        numSamples,simParams.Carrier,channel,aenOptions);
 
     % Each frame has a data for nRx 
-    [maxDelay,nTx,NIQ,nRx,Nframes] = size(HTargetpp);
+    [maxDelay,nTx,NIQ,nRx,Nframes] = size(Hpp);
 
     % Combine frames and nRx
-    HTargetpp = reshape(HTargetpp,maxDelay,nTx,NIQ,nRx*Nframes);
+    Hpp = reshape(Hpp,maxDelay,nTx,NIQ,nRx*Nframes);
 
     % Calculate the average and standard deviation to normalize the data
-    avgVal = mean(HTargetpp,'all');
-    stdVal = std(HTargetpp,[],'all');
+    avgVal = mean(Hpp,'all');
+    stdVal = std(Hpp,[],'all');
 
     % Separate data into training, validation and testing
-    numDataSet = size(HTargetpp,4);
-    numTrainDS = 0.6*numDataSet;
-    numValidDS = 0.15*numDataSet;
-    numTestDS  = 0.25*numDataSet;
+    numDataSet = size(Hpp,4);
+    numTrainDS = 0.6*numDataSet;  % 60%
+    numValidDS = 0.15*numDataSet; % 15%
+    numTestDS  = 0.25*numDataSet; % 25%
 
     % Target Std of value of 0.0212, which will restrict data to range
     % [-0.5 , 0.5]
     trainInd = 1:numTrainDS;
     validInd = numTrainDS + (1:numValidDS);
     testInd  = numTrainDS + numValidDS + (1:numTestDS);
-    HTrain = (HTargetpp(:,:,:,trainInd) - avgVal)/stdVal*0.0212 + 0.5;
-    HValid = (HTargetpp(:,:,:,validInd) - avgVal)/stdVal*0.0212 + 0.5;
-    HTest  = (HTargetpp(:,:,:,testInd)  - avgVal)/stdVal*0.0212 + 0.5;
+    HTrain = (Hpp(:,:,:,trainInd) - avgVal)/stdVal*0.0212 + 0.5;
+    HValid = (Hpp(:,:,:,validInd) - avgVal)/stdVal*0.0212 + 0.5;
+    HTest  = (Hpp(:,:,:,testInd)  - avgVal)/stdVal*0.0212 + 0.5;
 
     % Update aen options
     aenOptions.AvgVal = avgVal;
     aenOptions.StdVal = stdVal;
     aenOptions.TargetStd = 0.0212;
+
+    % Training options
+    miniBatch = 1000;
+    valData = {HValid,HValid};
+    [trainingOpts,lossFcn] = Autoencoder.Training.ConfigureOptions('adam',valData,miniBatch);
+   
+    % The training data doubles as the ground truth, since the autoencoder 
+    % learns to compress the input and then reconstruct that same input at 
+    % the output.
+    HTarget = HTrain;
+
+    % Start training
+    disp('Begin Training ... ')
+    [trainedNet,trainInfo] = trainnet(HTrain,HTarget,aen,lossFcn,trainingOpts);
+    savedTrainingOpts = trainingOpts;
+
+    % Test dataset
+    HTestHat = predict(trainedNet,HTest);
+
+    % Get performance stats
+    correlation = zeros(numTestDS,1);
+    nmse = zeros(numTestDS,1);
+    for idx = 1:numTestDS
+        x = HTest(:,:,1,idx) + 1i*HTest(:,:,2,idx);
+        xHat = HTestHat(:,:,1,idx) + 1i*HTestHat(:,:,1,idx);
+
+        % Calculate correlation
+        c1 = sqrt(sum(conj(x).*x,'all'));
+        c2 = sqrt(sum(conj(xHat).*xHat,'all'));
+        aa = abs(sum(conj(x).*xHat,'all'));
+        correlation(idx) = aa/(c1*c2);
+
+        % Calculate NMSE
+        mse = mean(abs(x-xHat).^2,'all');
+        nmse(idx) = 10*log10(mse/mean(abs(x).^2,'all'));
+
+    end
+
+    figure
+    tiledlayout(2,1)
+    nexttile
+    histogram(correlation,"Normalization","probability")
+    grid on
+    title(sprintf("Autoencoder Correlation (Mean \\rho = %1.5f)", ...
+        mean(correlation)))
+    xlabel("\rho"); ylabel("PDF")
+    nexttile
+    histogram(nmse,"Normalization","probability")
+    grid on
+    title(sprintf("Autoencoder NMSE (Mean NMSE = %1.2f dB)",mean(nmse)))
+    xlabel("NMSE (dB)"); ylabel("PDF")
 
     
     
@@ -182,5 +235,6 @@ if trainingToggle
 
 
 end
+
 
 
