@@ -228,9 +228,9 @@ tiledlayout(2,1)
 nexttile
 histogram(correlation,"Normalization","probability")
 grid on
-title(sprintf("Autoencoder Correlation (Mean \\rho = %1.5f)", ...
+title(sprintf("Autoencoder Correlation (Mean Correlation = %1.5f)", ...
     mean(correlation)))
-xlabel("\correlation"); ylabel("PDF")
+xlabel("Correlation"); ylabel("PDF")
 nexttile
 histogram(nmse,"Normalization","probability")
 grid on
@@ -280,7 +280,7 @@ tiledlayout(2,1)
 nexttile
 histogram(correlationE2E,"Normalization","probability")
 grid on
-title(sprintf("End-to-End Correlation (Mean \\rho = %1.5f)", ...
+title(sprintf("End-to-End Correlation (Mean Correlation = %1.5f)", ...
   mean(correlationE2E,'all')))
 xlabel("Correlation"); ylabel("PDF")
 nexttile
