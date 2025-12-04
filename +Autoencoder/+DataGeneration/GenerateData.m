@@ -1,12 +1,12 @@
-function [HTargetTensor,HTargetTensorpp,options] = GenerateData(numSamples,carrier,channel,options)
+function [HTensor,HTensorpp,options] = GenerateData(numSamples,carrier,channel,options)
 %GenerateData produces N channel estimate frames using the 5G NR carrier
-%   (CR) and channel model (CH). The output HTarget is a tensor of shape 
+%   (CR) and channel model (CH). The output HTarget is a tensor of shape
 %   [Ndelay × NTx × 2(I/Q) × Nrx], where:
 %       - Ndelay = max channel delay taps
 %       - Ntx = transmit antennas
 %       - 2 = I/Q components
 %       - Nrx = receive antennas
-% opt holds configuration parameters. 
+% opt holds configuration parameters.
 % Each saved file corresponds to one channel estimate frame.
 
 release(channel)
@@ -28,7 +28,7 @@ end
 waveInfo = nrOFDMInfo(carrier);
 channel.SampleRate = waveInfo.SampleRate; % set same sample rate
 
-% Samples per slot based on carrier waveform 
+% Samples per slot based on carrier waveform
 symbolsPerSlot = carrier.SymbolsPerSlot;
 options.SamplesPerSlot = sum(waveInfo.SymbolLengths(1:symbolsPerSlot));
 
@@ -81,8 +81,8 @@ else
 end
 
 % Pre-allocate target tensors
-HTargetTensor = zeros(numSubcarriers,options.NumSlotsPerFrame*symbolsPerSlot,nRx,nTx,numFrames,like=1i);
-HTargetTensorpp = zeros(options.MaxDelay,nTx,2,nRx,options.NumSlotsPerFrame*numFrames);
+HTensor = zeros(numSubcarriers,options.NumSlotsPerFrame*symbolsPerSlot,nRx,nTx,numFrames,like=1i);
+HTensorpp = zeros(options.MaxDelay,nTx,2,nRx,options.NumSlotsPerFrame*numFrames);
 
 for frIdx = 1:numFrames
 
@@ -96,15 +96,17 @@ for frIdx = 1:numFrames
     HestTensor = estimateChannelResponse(channelTmp,carrier,options);
 
     % Fill in H target tensor
-    HTargetTensor(:,:,:,:,frIdx) = HestTensor;
+    HTensor(:,:,:,:,frIdx) = HestTensor;
 
     %save(processedFileNameBase + "_" + fr,'HestTensor');
 
-    % Preprocess channel response tensor
-    HestTensorpp = preprocessChannelResponse(HestTensor,options);
-
-    % Fill in preprocessed H target tensor
-    HTargetTensorpp(:,:,:,:,frIdx) = HestTensorpp;
+    if options.Preprocess
+        % Preprocess channel response tensor
+        HestTensorpp = Autoencoder.DataGeneration.PreprocessChannelResponse(HestTensor,options);
+    
+        % Fill in preprocessed H target tensor
+        HTensorpp(:,:,:,:,frIdx) = HestTensorpp;
+    end
 end
 fprintf('Data Generation Completed \n')
 
@@ -118,7 +120,7 @@ function HestTensor = estimateChannelResponse(channel,carrier,options)
 %   per frame.
 
 % Perform slot and frame compatibility check
-% Is the number of slots we want to simulate smaller than one full 5G 
+% Is the number of slots we want to simulate smaller than one full 5G
 % frame?
 slotsPerFrame = options.NumSlotsPerFrame;
 symsPerSlot = carrier.SymbolsPerSlot;
@@ -153,25 +155,26 @@ else
         % Load HestTmp into Hest tensor
         HestTensor(:,HestIdx,:,:) = HestTmp;
     end
-
-    if opt.ResetChannelPerFrame
-        reset(channel)
-    end
 end
+
+if options.ResetChannelPerFrame
+    reset(channel)
+end
+
 end
 
 function Hest = channelEstimationSubroutine(channel,carrier,zto)
 %channelEstimationSubroutine subroutine to help with channele response
-%   estimation for different slots
+% estimation for different slots
 
 [pathGains,sampleTimes] = channel();
 pathFilters = channel.getPathFilters();
 
 if zto
-  % Perfect timing sync
-  offset = 0;
+    % Perfect timing sync
+    offset = 0;
 else
-  offset = nrPerfectTimingEstimate(pathGains,pathFilters);
+    offset = nrPerfectTimingEstimate(pathGains,pathFilters);
 end
 
 % Have to use perfect channel estimate for targets/ground truth
@@ -179,73 +182,6 @@ Hest = nrPerfectChannelEstimate(carrier,pathGains,pathFilters,offset,sampleTimes
 
 end
 
-function Hestpp = preprocessChannelResponse(Hest,options)
-%preprocessChannelResponse Prepares the channel estimate 'Hest' by
-%   decimating via 2D-FFT and 2D-IFFT. The preprocessed channel estimate
-%   has maxDelay samples and is a real-valued tensor.
-%   Hestpp is maxDelay x nTx x 2(I/Q) x nRx x Nslots, where 
-%   Nslots = numSyms/14
-%
-%   This procedure is similar to Principle Components Analysis (PCA)
-%
-
-maxDelay = options.MaxDelay;
-[numSubcarrier,numSyms,nRx,nTx] = size(Hest);
-% Compute center of delay spread band. Keep only the taps that matter and
-% discard channel where magnitude is close to 0. This is delay-domain
-% sparsity exploitation.
-midpt = floor(numSubcarrier/2);
-lb = midpt - (numSubcarrier - maxDelay)/2 + 1;
-ub = midpt + (numSubcarrier - maxDelay)/2;
-
-% Average over symbols
-symsPerSlot = 14;
-Nslots = numSyms/symsPerSlot;
-HTmp = reshape(Hest,numSubcarrier,Nslots,symsPerSlot,nRx,nTx);
-% Remove fast fading noise and keeps long-term multipath structure
-H = mean(HTmp,3); % 3rd dim is symsPerSlot dim
-H = permute(H, [1, 5, 4, 2, 3]); % rearrange dims
-
-% Pre-allocate
-Hestpp = zeros(maxDelay,nTx,2,nRx,Nslots,like=1i);
-
-% Per Rx antenna, decimate over subcarriers using 2D-FFT
-for slotIdx = 1:Nslots
-    % 2D-FFT: go from freq/spatial(antenna) to delay/angle(spatial dir) 
-    % domain
-    Hfft = fft2(H(:,:,:,slotIdx));
-
-    % Truncate
-    HTruncTmp = Hfft([1:lb-1, ub+1:end],:,:);
-
-    switch options.DataDomain
-        case 'Frequency-Spatial'
-            % Transform back if freq/spatial is desired
-            HTrunc = ifft2(HTruncTmp);
-        otherwise
-            % Keep as is iff delay/spatial is desired
-            HTrunc = HTruncTmp;
-    end
-
-    % Extract Real (I) and Imag (Q) components
-    HI = real(HTrunc); % I
-    HQ = imag(HTrunc); % Q
-
-    if options.Normalization
-        avgVal = options.MeanValue;
-        stdVal = options.StdValue;
-        targetStd = options.TargetStdValue;
-        % Normalize using standard Z-score and rescaling std
-        Hestpp(:,:,1,:,slotIdx) = ((HI - avgVal)/stdVal)*targetStd + 0.5;
-        Hestpp(:,:,2,:,slotIdx) = ((HQ - avgVal)/stdVal)*targetStd + 0.5;
-    else
-        % Keep as is
-        Hestpp(:,:,1,:,slotIdx) = HI;
-        Hestpp(:,:,2,:,slotIdx) = HQ;
-    end
-end
-
-end
 
 
 
