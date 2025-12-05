@@ -16,8 +16,6 @@ encoderLayers = [
     sigmoidLayer(Name='Enc_Sig')
     ];
 
-%aen = addLayers(aen,encoderLayers);
-
 tmp = [fullyConnectedLayer(28*2*2,Name='Dec_FCN');
     functionLayer(@(x)dlarray(reshape(x,28,2,2,[]),'SSCB'),Formattable=true,...
     Acceleratable=true,Name='Dec_Reshape_S1')];

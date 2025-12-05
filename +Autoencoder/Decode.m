@@ -1,6 +1,6 @@
 function Hhat = Decode(dec,codeword,options)
 %DecodeCSI decodes CSI using the encoder network 'enc' on codeword with 
-% options from auotencoder option 'opt'.
+%   options from auotencoder option 'opt'.
 
 [nRx,N,codewordLen] = size(codeword);
 nsc = options.NumSubcarriers;

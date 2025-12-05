@@ -1,6 +1,6 @@
 function Hhat = PostprocessChannelResponse(Hpp,options)
 %PostprocessChannelResponse applies post-processing for Hest by
-% interpolating via 2D-FFT and 2D-IFFT (reversal of preprocessing)
+%   interpolating via 2D-FFT and 2D-IFFT (reversal of preprocessing)
 
 maxDelay = options.MaxDelay;
 avgVal = options.AverageValue;

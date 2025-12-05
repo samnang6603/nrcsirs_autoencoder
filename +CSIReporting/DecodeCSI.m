@@ -1,7 +1,7 @@
 function [modulation,targetCodeRate,precoder] = DecodeCSI(carrier,pdsch,...
     pdschX,csiReport,csiFeedbackOpts)
 %DecodeCSI decodes CSI to obtain new modulation, target code rate and
-%precoding matrix
+%   precoding matrix
 
 
 csiReportConfig = csiFeedbackOpts.CSIReportConfig;

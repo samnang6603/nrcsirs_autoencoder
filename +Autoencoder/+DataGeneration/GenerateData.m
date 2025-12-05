@@ -6,8 +6,8 @@ function [HTensor,HTensorpp,options] = GenerateData(numSamples,carrier,channel,o
 %       - Ntx = transmit antennas
 %       - 2 = I/Q components
 %       - Nrx = receive antennas
-% opt holds configuration parameters.
-% Each saved file corresponds to one channel estimate frame.
+%   options holds configuration parameters.
+%   Each saved file corresponds to one channel estimate frame.
 
 release(channel)
 channelInfo = info(channel);

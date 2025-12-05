@@ -165,6 +165,9 @@ HTrain = (Hpp(:,:,:,trainInd) - avgVal)/stdVal*0.0212 + 0.5;
 HValid = (Hpp(:,:,:,validInd) - avgVal)/stdVal*0.0212 + 0.5;
 HTest  = (Hpp(:,:,:,testInd)  - avgVal)/stdVal*0.0212 + 0.5;
 if ispc
+    if ~isfolder("nrcsirs_autoencoder\Data")
+        mkdir("Data");
+    end
     save("Data\" + "ChannelEstimation.mat",...
         'Hpp','HTrain','HTest','HValid');
 end
@@ -191,6 +194,9 @@ if trainingToggle
     [trainedNet,trainInfo] = trainnet(HTrain,HTarget,aen,lossFcn,trainingOpts);
     savedTrainingOpts = trainingOpts;
     if ispc
+        if ~isfolder("nrcsirs_autoencoder\Saved_Models")
+            mkdir("Saved_Models");
+        end
         ss = "AENTrainedNetwork_" + ...
             string(datetime('now',Format="MM_dd_HH_mm"));
         save("Saved_Models\" + ss,...

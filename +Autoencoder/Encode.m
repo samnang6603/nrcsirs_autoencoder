@@ -1,6 +1,6 @@
 function codeword = Encode(enc,Hest,options)
 %EncodeCSI encodes CSI using the encoder network 'enc' on Hest with options
-% from auotencoder option 'opt'.
+%   from auotencoder option 'opt'.
 
 [~,~,nRx,nTx,D] = size(Hest);
 
