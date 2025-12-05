@@ -164,8 +164,10 @@ testInd  = numTrainDS + numValidDS + (1:numTestDS);
 HTrain = (Hpp(:,:,:,trainInd) - avgVal)/stdVal*0.0212 + 0.5;
 HValid = (Hpp(:,:,:,validInd) - avgVal)/stdVal*0.0212 + 0.5;
 HTest  = (Hpp(:,:,:,testInd)  - avgVal)/stdVal*0.0212 + 0.5;
-save("Data\" + "ChannelEstimation.mat",...
-    'Hpp','HTrain','HTest','HValid');
+if ispc
+    save("Data\" + "ChannelEstimation.mat",...
+        'Hpp','HTrain','HTest','HValid');
+end
 
 % Update aen options
 aenOptions.AverageValue = avgVal;
@@ -188,11 +190,13 @@ if trainingToggle
     disp('Begin Training ... ')
     [trainedNet,trainInfo] = trainnet(HTrain,HTarget,aen,lossFcn,trainingOpts);
     savedTrainingOpts = trainingOpts;
-    ss = "AENTrainedNetwork_" + ...
-        string(datetime('now',Format="MM_dd_HH_mm"));
-    save("Saved_Models\" + ss,...
-        'trainedNet','trainInfo','aenOptions','savedTrainingOpts');
-    fprintf("Model %s has been saved to Saved_Models folder \n",ss);
+    if ispc
+        ss = "AENTrainedNetwork_" + ...
+            string(datetime('now',Format="MM_dd_HH_mm"));
+        save("Saved_Models\" + ss,...
+            'trainedNet','trainInfo','aenOptions','savedTrainingOpts');
+        fprintf("Model %s has been saved to Saved_Models folder \n",ss);
+    end
 
 else
     [fname, fpath, ~] = uigetfile("*.mat",MultiSelect="on");
