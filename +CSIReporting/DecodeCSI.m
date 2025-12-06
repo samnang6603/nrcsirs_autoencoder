@@ -3,7 +3,6 @@ function [modulation,targetCodeRate,precoder] = DecodeCSI(carrier,pdsch,...
 %DecodeCSI decodes CSI to obtain new modulation, target code rate and
 %   precoding matrix
 
-
 csiReportConfig = csiFeedbackOpts.CSIReportConfig;
 
 switch csiReportConfig.Mode
@@ -15,6 +14,14 @@ switch csiReportConfig.Mode
             pdschX.PRGBundleSize,csiReportConfig,csiReport.Precoder);
 
     case 'AI CSI compression'
+        % Load network
+        [~,aenDecoder,aenOptions] = Autoencoder.LoadModel(csiFeedbackOpts);
+
+        % Decode CSI report using AEN decoder
+        HestGrid = Autoencoder.Decode(aenDecoder,csiReport.H,aenOptions);
+
+        % Replicate channel 
+
 
 
 end
@@ -64,7 +71,7 @@ wtx = permute(wtx,[2,1,3]);
 
 end
 
-function [wtx,sinr] = computeSVDPrecodingMatrix(carrier,numLayers,prbSet,Hest,nVar,prgBundleSize)
+function [wtx,sinr] = computeSVDPrecodingMatrix(carrier,numLayers,prbSet,HestGrid,nVar,prgBundleSize)
 %computeSVDPrecodingMatrix calculates precoding matrices for all PRGs in 
 % the carrier that overlap with the PDSCH allocation
 
@@ -74,13 +81,19 @@ if isempty(pdsch)
 end
 
 pdsch.NumLayers = numLayers;
-pdsch.PRBSet = prbset;
+pdsch.PRBSet = prbSet;
+[wtx,hest] = CSIReporting.ComputeSVDPrecoders(carrier,pdsch,HestGrid,prgBundleSize);
 
-
-
+nPRG = size(wtx); 
+sinr = zeros(numLayers,nPRG);
+for idx = 1:nPRG
+    hestTmp = hest(:,:,idx);
+    wtxTmp  = wtx(:,:,idx);
+    sinr(:,idx) = computePrecodedSINR2DHSubroutine(hestTmp,wtxTmp,nVar);
+end
 end
 
-function sinr = computePrecodedSINRSubroutine(H,W,nVar)
+function sinr = computePrecodedSINR2DHSubroutine(H,W,nVar)
 % Reference
 % nrPrecodedSINR(H,nVar,W) from Mathworks
 % Li, Ping, et al. "On the Distribution of SINR for the MMSE MIMO Receiver 
@@ -88,27 +101,13 @@ function sinr = computePrecodedSINRSubroutine(H,W,nVar)
 % vol. 52, no. 1, 1 Jan. 2006, pp. 271–286, 
 % https://doi.org/10.1109/tit.2005.860466. Accessed 23 Sept. 2023.
 
-% Rerrange H matrix, so H is now nRxAnt-Pcsirs-K*L
-H = permute(H,[2, 3, 1]); % Toss the BWP sc to the third dim to match W
-
-R = pagemtimes(H,W);
+R = H*W;
 [~,S,V] = pagesvd(R,'econ','vector');
-
 SSqr = S.*S;
 absVSqr = abs(V).^2;
-
-% If H is 2D, compute SINR values using W as page
-if size(H,3) == 1
-    diagTerm = nVar./(nVar + SSqr + eps); % eps to prevent divide by 0
-    diagTermPageT = pagetranspose(diagTerm);
-    sumTerm = sum(absVSqr.*diagTermPageT,2);
-    msee_i = squeeze(sumTerm); % msee of i-th stream
-else % If H is n-dim
-    SSqrPageT = pagetranspose(SSqr); % page transpose this
-    nVarVec = nVar*ones(1,size(W,2)); % create a vector to match SSqrPageT
-    diagTerm = nVar./(SSqrPageT + nVarVec + eps); % eps to prevent divide by 0
-    sumTerm = sum(absVSqr.*diagTerm,2);
-    msee_i = permute(sumTerm,[3, 1, 2]); % msee of i-th stream
-end
+diagTerm = nVar./(nVar + SSqr + eps); % eps to prevent divide by 0
+diagTermPageT = pagetranspose(diagTerm);
+sumTerm = sum(absVSqr.*diagTermPageT,2);
+msee_i = squeeze(sumTerm); % msee of i-th stream
 sinr = 1./msee_i - 1;
 end
