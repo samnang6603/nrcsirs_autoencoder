@@ -1,4 +1,4 @@
-function [codebook,codebookIdxSetSizes] = ExtractCodebook(reportConfig,Pscirs,numLayers)
+function [codebook,codebookIdxSetSizes] = ExtractCodebook(reportConfig,Pcsirs,numLayers)
 %COMPUTEPMI Calculate PMI and get the codebook for Type I single-panel
 %codebook.
 
@@ -10,17 +10,21 @@ i2Restriction = reportConfig.i2Restriction;
 % TS 38.214 5.2.2.2.1
 %phi = @(x)exp(1i*pi*x/2);
 
-if Pscirs == 2 % basically simple 2 Tx
+if Pcsirs == 2 % basically simple 2 Tx
     % For numLayer = 1 & 2, CSI reporting uses ports 3000 - 3001 according
     % to TS 38.214 Table 5.2.2.2.1-1
     if numLayers == 1
         % Means take the two Tx and combine them with different relative
         % phases, yielding beam steering in different directions
         codebook = zeros(2,1,4); % Pre-allocation
-        codebook(:,:,1) = 1/sqrt(2).*[1;  1 ]; % no phase offset
-        codebook(:,:,2) = 1/sqrt(2).*[1;  1i]; % 90 deg phase offset
-        codebook(:,:,3) = 1/sqrt(2).*[1; -1 ]; % 180 deg phase offset
-        codebook(:,:,4) = 1/sqrt(2).*[1; -1i]; % 270 deg phase offset
+        codebook(:,:,1) = 1/sqrt(2).*[1;  
+                                      1]; % no phase offset
+        codebook(:,:,2) = 1/sqrt(2).*[1;  
+                                      1i]; % 90 deg phase offset
+        codebook(:,:,3) = 1/sqrt(2).*[1; 
+                                     -1]; % 180 deg phase offset
+        codebook(:,:,4) = 1/sqrt(2).*[1; 
+                                     -1i]; % 270 deg phase offset
         
         % Grab indices of precoders forbidden by subset restriction
         restrictedIndices = find(~codebookSubsetRestriction);
@@ -57,7 +61,7 @@ if Pscirs == 2 % basically simple 2 Tx
         end
     end
 
-elseif Pscirs > 2
+elseif Pcsirs > 2
     % For more than 2 Tx
     panelDim = reportConfig.PanelDimensions;
     N1 = panelDim(1);
@@ -73,7 +77,7 @@ elseif Pscirs > 2
             i11Len = N1*O1;
             i12Len = N2*O2;
             i2Len = 4;
-            codebook = zeros(Pscirs,numLayers,i2Len,i11Len,i12Len);
+            codebook = zeros(Pcsirs,numLayers,i2Len,i11Len,i12Len);
             % Exhuast all permutations of i11, i12 and i2
             for i11 = 0:i11Len-1
                 for i12 = 0:i12Len-1
@@ -86,12 +90,13 @@ elseif Pscirs > 2
                         % Flattened index = i11*i12Len + i12
                         % Each row (i11) is a stride of N2*O2, i12 offsets within the stride.
                         linStrideIdx = l*N2*O2*+m;
-                        [vlmRestricted,i2Restricted] = checkRestriction(codebookSubsetRestriction,linStrideIdx,n,i2Restriction);
-                        if ~(vlmRestricted || i2Restricted)
+                        [lmRestricted,i2Restricted] = checkRestriction(codebookSubsetRestriction,linStrideIdx,n,i2Restriction);
+                        if ~(lmRestricted || i2Restricted)
                             vlm = computeVlm(N1,N2,O1,O2,l,m);
                             phi_n = exp(1i*pi*n/2); % co-phasing factor
                             % Calculate Wlmn from Table 5.2.2.2.1-5
-                            tmp = [vlm; phi_n*vlm];
+                            tmp = [       vlm; 
+                                    phi_n*vlm];
                             W1 = 1/sqrt(Pcsirs)*tmp;
                             codebook(:,:,n+1,l+1,m+1) = W1;
                         end
@@ -133,25 +138,26 @@ elseif Pscirs > 2
             i11Len = N1*O1;
             i12Len = N2*O2;
             i2Len = 2;
-            codebook = zeros(Pscirs,numLayers,i2Len,i11Len,i12Len,i13Len);
+            codebook = zeros(Pcsirs,numLayers,i2Len,i11Len,i12Len,i13Len);
             % Exhuast all permutations of i11, i12, i13 and i2
             for i11 = 0:i11Len-1
                 for i12 = 0:i12Len-1
                     for i13 = 0:i13Len-1
                         for i2 = 0:i2Len-1
                             l  = i11;
-                            lp = i11 + k1(i3+1); % k1 is the mini LUT, i3 is the stride
+                            lp = i11 + k1(i13+1); % k1 is the mini LUT, i3 is the stride
                             m  = i12;
-                            mp = i12 + k2(i3+1);
+                            mp = i12 + k2(i13+1);
                             o  = i13;
                             n  = i2;
                             linStrideIdx = l*N2*O2 + m;
-                            [vlmRestricted,i2Restricted] = checkRestriction(codebookSubsetRestriction,linStrideIdx,n,i2Restriction);
-                            if ~(vlmRestricted || i2Restricted)
+                            [lmRestricted,i2Restricted] = checkRestriction(codebookSubsetRestriction,linStrideIdx,n,i2Restriction);
+                            if ~(lmRestricted || i2Restricted)
                                 vlm = computeVlm(N1,N2,O1,O2,l,m);
                                 vlpmp = computeVlm(N1,N2,O1,O2,lp,mp); % v l_prime p_prime
                                 phi_n = exp(1i*pi*n/2);
-                                tmp = [vlm, vlpmp; phi_n*vlm, -phi_n*vlm];
+                                tmp = [      vlm,        vlpmp; 
+                                       phi_n*vlm, -phi_n*vlpmp];
                                 W2 = (1/sqrt(2*Pcsirs))*tmp;
                                 codebook(:,:,n+1,l+1,m+1,o+1) = W2;
                             end
@@ -161,8 +167,83 @@ elseif Pscirs > 2
             end
         end
 
+    elseif (numLayers == 3) || (numLayers == 4)
+        % Combine calculation because the only difference between 3 and 4 
+        % layers is the dimension of the precoder W. The procedures are
+        % identical.
 
-    %elseif (numLayers == 3) || (numLayers == 4)
+        if Pcsirs < 16
+            % If PCSIRS < 16 then use TS 38.214 Table 5.2.2.2.1-4 to
+            % compute i13 indices which corresponds to k1 and k2.
+            if (N1 == 2) && (N2 == 1)
+                i13Len = 1;
+                k1 = O1;
+                k2 = 0;
+            elseif (N1 == 4) && (N2 == 1)
+                i13Len = 3;
+                k1 = O1*(1:3);
+                k2 = [0, 0, 0];
+            elseif (N1 == 6) && (N2 == 1)
+                i13Len = 4;
+                k1 = O1*(1:4);
+                k2 = [0, 0, 0, 0];
+            elseif (N1 == 2) && (N2 == 2)
+                i13Len = 3;
+                k1 = [O1,  0, O1];
+                k2 = [ 0  O2, O2];
+            elseif (N1 == 3) && (N2 == 2)
+                i13Len = 4;
+                k1 = [O1,  0, O1, 2*O1];
+                k2 = [ 0, O2, O2,    0];
+            end
+            i11Len = N1*O1;
+            i12Len = N2*O2;
+            i2Len  = 2;
+            codebook = zeros(Pcsirs,numLayers,i2Len,i11Len,i12Len,i13Len);
+            % Exhuast all permutations of i11, i12, i13, and i2
+            for i11 = 0:i11Len-1
+                for i12 = 0:i12Len-1
+                    for i13 = 0:i13Len-1
+                        for i2 = 0:i12Len-1
+                            l  = i11;
+                            lp = i11 + k1(i13+1);
+                            m  = i12;
+                            mp = i12 + k2(i13+1);
+                            n  = i2;
+                            o  = i13;
+                            linStrideIdx = m + N2*O2*l;
+                            [lmRestricted,i2Restricted] = checkRestriction(codebookSubsetRestriction,linStrideIdx,n,i2Restriction);
+                            if ~(lmRestricted || i2Restricted)
+                                vlm = computeVlm(N1,N2,O1,O2,l,m);
+                                vlpmp = computeVlm(N1,N2,O1,O2,lp,mp); % v l_prime p_prime
+                                phi_n = exp(1i*pi*n/2);
+                                phi_nvlm = phi_n*vlm;
+                                phi_nvlpmp = phi_n*vlpmp;
+                                if numLayers == 3
+                                    % 3-layers CSI reporting via antenna
+                                    % ports 3000 to 2999+Pcsirs in
+                                    % TS 38.214 Table 5.2.2.2.1-7
+                                    tmp = [     vlm,      vlpmp,       vlm;
+                                           phi_nvlm, phi_nvlpmp, -phi_nvlm];
+                                    W3  = (1/sqrt(3*Pcsirs))*tmp;
+                                    codebook(:,:,n+1,l+1,m+1,o+1) = W3;
+                                else
+                                    % 4-layers CSI reporting via antenna
+                                    % ports 3000 to 2999+Pcsirs
+                                    % TS 38.214 Table 5.2.2.2.1-8
+                                    tmp = [     vlm,      vlpmp,       vlm,       vlpmp;
+                                           phi_nvlm, phi_nvlpmp, -phi_nvlm, -phi_nvlpmp];
+                                    W4  = (1/sqrt(4*Pcsirs))*tmp;
+                                    codebook(:,:,n+1,l+1,m+1,o+1) = W4;
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        else
+            % Pcsirs > 16
+        end
 
     %elseif (numLayers == 5) || (numLayers == 6)
 

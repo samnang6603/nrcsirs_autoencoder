@@ -53,6 +53,6 @@ elseif contains(delayProfile,'TDL')
         SampleRate=sampleRate);
 
     % TDL only requires total number of Tx and Rx
-    channel.NumTransmitAntennas = simParams.NTxAnts;
-    channel.NumReceiveAntennas  = simParams.NRxAnts;
+    channel.NumTransmitAntennas = simParams.NumTxAntennas;
+    channel.NumReceiveAntennas  = simParams.NumRxAntennas;
 end

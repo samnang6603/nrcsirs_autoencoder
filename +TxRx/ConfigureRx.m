@@ -30,14 +30,21 @@ SNRdB  = simParams.SNRIn(snrIdx);       % Desired SNR [dB]
 SNRLin = 10^(SNRdB/10);                 % Convert to linear
 N0 = 1/sqrt(nfft*SNRLin);               % Base noise scaling (per RE, per FFT bin)
 
-numInputs = prod(channel.TransmitAntennaArray.Size);  % Total Tx antenna elems
-if channel.NormalizeChannelOutputs
-    N0 = N0/sqrt(numInputs);            % Compensate for normalized channel outputs
-end
-noiseEst = N0^2*nfft;                   % Final noise variance (per FFT grid)
-
 % Channel Info
 channelInfo = info(channel);
+
+% Get number of outputs
+if isa(channel,'nrCDLChannel')
+    numOutputs = channelInfo.NumOutputSignals;
+else
+    numOutputs = channelInfo.NumReceiveAntennas;
+end
+
+if channel.NormalizeChannelOutputs
+    N0 = N0/sqrt(numOutputs);  % Compensate for normalized channel outputs
+end
+
+noiseEst = N0^2*nfft; % Final noise variance (per FFT grid)
 
 % Get initial channel estimate
 channelClone = clone(channel); % clone to get ofdm-response without affect original object

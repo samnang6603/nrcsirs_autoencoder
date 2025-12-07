@@ -88,11 +88,11 @@ simParams.EnableHARQ = false;
 %% CSI-RS Configuration
 simParams.CSIRS = nrCSIRSConfig;
 simParams.CSIRS.CSIRSType = 'nzp'; % 'nzp','zp'
-simParams.CSIRS.RowNumber = 3; % 1...18
+simParams.CSIRS.RowNumber = 6; % 1...18
 simParams.CSIRS.NumRB = simParams.Carrier.NSizeGrid - simParams.CSIRS.RBOffset;
 simParams.CSIRS.CSIRSPeriod = [10 0];
 simParams.CSIRS.SymbolLocations = 4;
-simParams.CSIRS.SubcarrierLocations = 0; %[0,3,6,9];
+simParams.CSIRS.SubcarrierLocations = [0,3,6,9];
 simParams.CSIRS.Density = 'one';
 
 disp(['Number of CSI-RS ports: ' num2str(simParams.CSIRS.NumCSIRSPorts) '.'])
@@ -112,7 +112,7 @@ simParams.MaximumDopplerShift = 5;  % Hz
 % P  = # of polarizations (1 or 2)
 % Mg = # of rows in the array of panels
 % Ng = # of columns in the array of panels
-% Row format= [M  N   P   Mg  Ng]
+% Row format= [N1  N2   P   Mg  Ng]
 antArraySizes = ...
    [1   1   1   1   1;   % 1 ants
     1   1   2   1   1;   % 2 ants
@@ -127,10 +127,10 @@ antArraySizes = ...
     8  16   2   2   2];  % 1024 ants
 
 simParams.TransmitAntennaArray.NumPanels        = 1; % Number of transmit panels in horizontal dimension (Ng)
-simParams.TransmitAntennaArray.PanelDimensions  = [1, 1]; % Number of columns and rows in the transmit panel (M, N)
+simParams.TransmitAntennaArray.PanelDimensions  = [2, 2]; % Number of columns and rows in the transmit panel (N1, N2)
 simParams.TransmitAntennaArray.NumPolarizations = 2; % Number of transmit polarizations
 simParams.ReceiveAntennaArray.NumPanels         = 1; % Number of receive panels in horizontal dimension (Ng)
-simParams.ReceiveAntennaArray.PanelDimensions   = [1, 1]; % Number of columns and rows in the receive panel (M, N)
+simParams.ReceiveAntennaArray.PanelDimensions   = [2, 1]; % Number of columns and rows in the receive panel (N1, N2)
 simParams.ReceiveAntennaArray.NumPolarizations  = 2; % Number of receive polarizations
 
 simParams.NumTxAntennas = prod([simParams.TransmitAntennaArray.NumPanels,...
