@@ -17,7 +17,7 @@ switch class(channel)
         nRx = channelInfo.NumOutputSignals;
         options.ChannelSampleDensity = 64*4;
     case 'nrTDLChannel'
-        nTx = channelInfo.NumInputSignals;
+        nTx = channelInfo.NumTransmitAntennas;
         nRx = channelInfo.NumReceiveAntennas;
         options.ChannelSampleDensity = 64;
     otherwise
@@ -124,7 +124,9 @@ function HestTensor = estimateChannelResponse(channel,carrier,options)
 % frame?
 slotsPerFrame = options.NumSlotsPerFrame;
 symsPerSlot = carrier.SymbolsPerSlot;
-channel.SampleDensity = options.ChannelSampleDensity;
+if isa(channel,'nrCDLChannel')
+    channel.SampleDensity = options.ChannelSampleDensity;
+end
 
 if slotsPerFrame < symsPerSlot
     % If smaller, we're only simulating less than one full frame
