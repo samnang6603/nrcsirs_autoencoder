@@ -190,7 +190,7 @@ elseif Pcsirs > 2
             elseif (N1 == 2) && (N2 == 2)
                 i13Len = 3;
                 k1 = [O1,  0, O1];
-                k2 = [ 0  O2, O2];
+                k2 = [ 0, O2, O2];
             elseif (N1 == 3) && (N2 == 2)
                 i13Len = 4;
                 k1 = [O1,  0, O1, 2*O1];
@@ -204,7 +204,7 @@ elseif Pcsirs > 2
             for i11 = 0:i11Len-1
                 for i12 = 0:i12Len-1
                     for i13 = 0:i13Len-1
-                        for i2 = 0:i12Len-1
+                        for i2 = 0:i2Len-1
                             l  = i11;
                             lp = i11 + k1(i13+1);
                             m  = i12;

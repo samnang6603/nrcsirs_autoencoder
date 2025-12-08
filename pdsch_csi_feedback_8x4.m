@@ -144,6 +144,11 @@ simParams.Channel = Channel.CreateChannel(simParams);
 simParams.ChannelInformation = info(simParams.Channel);
 fprintf("Simulation Channel Model: %s \n",simParams.DelayProfile);
 
+%% Create Channel clone to calculate Shannon Limit
+channelForPathGains = clone(simParams.Channel);
+channelForPathGains.ChannelFiltering = false;
+channelForPathGains.ChannelResponseOutput = 'path-gains';
+
 %% CSI Report
 simParams.CSIReportConfig = struct();
 simParams.CSIReportConfig.Mode = 'RI-PMI-CQI';
@@ -215,7 +220,10 @@ for snrIdx = 1:length(simParams.SNRIn)
     % Configure Channel
     channel = simParamsTmp.Channel;
     reset(channel);
+    reset(channelForPathGains);
     maxChannelDelay = simParamsTmp.ChannelInformation.MaximumChannelDelay;
+    nTx = simParamsTmp.ChannelInformation.NumTransmitAntennas;
+    nRx = simParamsTmp.ChannelInformation.NumReceiveAntennas;
 
     % Configure Tx
     [carrier,encDLSCH,pdsch,pdschextra,csirs,wtx] = TxRx.ConfigureTx(simParamsTmp);
@@ -225,6 +233,9 @@ for snrIdx = 1:length(simParams.SNRIn)
 
     % Total number of simulation slots
     NSlots = simParamsTmp.NFrames*carrier.SlotsPerFrame;
+
+    % Create an array to store shannon limit
+    shannon = zeros(NSlots,1);
 
     % Loop over waveform length
     for nslot = 0:NSlots-1
@@ -262,7 +273,6 @@ for snrIdx = 1:length(simParams.SNRIn)
             length(pdsch.PRBSet),pdschIndicesInfo.NREPerPRB,...
             pdschextra.TargetCodeRate,pdschextra.xOverhead);
 
-            
         % Generate transport block
         for cwIdx = 1:pdsch.NumCodewords
             % Generate new data for current codeword
@@ -298,8 +308,13 @@ for snrIdx = 1:length(simParams.SNRIn)
 
         % Pass through channel
         % Concatenate with zeros to offset channel delay
-        txWaveform = [txWaveform; zeros(maxChannelDelay,simParamsTmp.NumTxAntennas)]; %#ok<AGROW>
+        txWaveform = [txWaveform; zeros(maxChannelDelay,nTx)]; %#ok<AGROW>
         [rxWaveform,ofdmResponse,tOffset] = channel(txWaveform,carrier);
+
+        % Get path gain of the channel using the channel clone
+        [pathGains,~] = channelForPathGains();
+        shannon(nslot+1) = calculateShannonCapacity(carrier,pathGains,nTx,...
+            nRx,simParams.SNRIn);
 
         % Add AWGN to the received waveform
         noisepwr = N0*randn(size(rxWaveform),like=1i);
@@ -312,7 +327,7 @@ for snrIdx = 1:length(simParams.SNRIn)
 
         % Demodulate OFDM waveform
         rxDownlinkGrid = nrOFDMDemodulate(carrier,rxWaveform);
-        [nRE,nSym,nRx] = size(rxDownlinkGrid);
+        [nRE,nSym,~] = size(rxDownlinkGrid);
         % Pad zero to compensate for channel timing offset shortening of
         % vector
         if nSym < carrier.SymbolsPerSlot
@@ -407,7 +422,7 @@ for snrIdx = 1:length(simParams.SNRIn)
     CSIReportPerSNR{snrIdx} = csiReports;  %#ok<SAGROW>
     
     % Display throughput for each SNR
-    displayThroughput(simParamsTmp,snrIdx,simThroughput);
+    displayThroughput(simParamsTmp,snrIdx,simThroughput,shannon);
 
 end
 
@@ -426,6 +441,40 @@ function csiSlot = stepNextCSISlot(period,offset,nSlot)
 % CSI report config periodicity
 
 csiSlot = period*ceil((nSlot-offset)/period)+offset;
+end
+
+function [C,SE] = calculateShannonCapacity(carrier,HGrid,nTx,nRx,SNRdB)
+%calculateShannonCapacityUpperBound calculates the Shannon limit for the
+%   MIMO communication link.
+%
+%   C = B * log2(det(I_nRx + (SNR/nTx) * H * H_hermitian))
+%
+% Inputs:
+%   carrier : struct/object with NSizeGrid and SubcarrierSpacing (kHz)
+%   H       : nRx x nTx channel matrix (single realization)
+%   nTx     : number of Tx antennas
+%   nRx     : number of Rx antennas
+%   SNR_dB  : SNR in dB (per receive antenna)
+
+% Bandwidth = N_PRB * NumSubcarrierPerPRB * SubcarrierSpacing (Hz)
+B = carrier.NSizeGrid * 12 * carrier.SubcarrierSpacing * 1e3;
+
+% Get effective channel response
+HavgTime = squeeze(mean(HGrid,1)); % [PathDelays x nTx x nRx]
+H = squeeze(sum(HavgTime,1)); % sum over delays -> [nTx x nRx]
+H = permute(H,[2, 1]); % Make it [nRx x nTx]
+HHt = H*H'; % H * H^H (nRx x nTx)
+
+% Eigenvalue-based capacity (more stable than determinant)
+lambda = eig(HHt);  % nRx x 1
+SNR = 10.^(SNRdB/10);
+SE = sum(log2(1 + (SNR/nTx)*lambda)); % spectral efficiency
+C = B*SE;
+
+% Alternatively (strictly from formula)
+% InRx = eye(nRx);
+% M = InRx + (SNR/nTx)*HHt;
+% C = B * log2(real(det(M)));
 end
 
 function displaySlotTransmissionStatus(slotStatus,TotalNumSlots,carrier)
@@ -476,13 +525,15 @@ fprintf("(%5.2f%%) NSlot: #%2d: %s \n",100*(nslot+1)/TotalNumSlots,nslot,strtmp)
 
 end
 
-function displayThroughput(simParams,snrIdx,throughput)
+function displayThroughput(simParams,snrIdx,throughput,shannon)
 
 frames = simParams.NFrames;
 snrVal = simParams.SNRIn(snrIdx);
 mbps = (throughput(snrIdx)/(simParams.NFrames*10e-3))/1e6;
 
-fprintf('\nThroughput at SNR = %.1f dB for %d frames: %.3f Mbps\n',snrVal,frames,mbps);
+fprintf('\nThroughput at SNR = %.2fdB for %d frames: %.3f Mbps\n',snrVal,frames,mbps);
+fprintf('The average Shannon capacity (ergodic Shannon limit) of this link: %.3f Mbps\n',mean(shannon)/1e6);
 
 end
+
 

@@ -22,8 +22,8 @@ if contains(delayProfile,'CDL')
 
     % CDL requires configurationss of antenna structure
     % Polarization is always 2 if number of antenna element > 2
-    nTxPol = (simParams.NTxAnts > 1) + 1;
-    nRxPol = (simParams.NRxAnts > 1) + 1;
+    nTxPol = (simParams.NumTxAntennas > 1) + 1;
+    nRxPol = (simParams.NumRxAntennas > 1) + 1;
 
     % Tx antenna array configuration
     txArray = simParams.TransmitAntennaArray;

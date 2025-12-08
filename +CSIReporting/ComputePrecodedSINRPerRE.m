@@ -11,21 +11,32 @@ SINRPerRE = zeros([csirsIndSubsLen,numLayers,codebookIdxSetSizes]);
 prodSetSizes = prod(codebookIdxSetSizes);
 
 if csirsIndSubsLen > prodSetSizes
-    % If the number of sc in BWP is greater than codebook index set size
+    % If the number of csirs subcarriers in BWP is greater than codebook 
+    % index set size, consider the channel matrix as the page matrix
     for idx = 1:prodSetSizes
         % Check if all elements are zeros
         if any(codebook(:,:,idx),'all')
-            % Compute linear SINR of all RE that contains CSI-RS per precoding
-            % matrix
-            W = codebook(:,:,idx);
-            sinr = computePrecodedSINRSubroutine(H,W,nVar);
+            % Compute linear SINR of all RE that contains CSI-RS per 
+            % precoding matrix
+            WTmp = codebook(:,:,idx);
+            sinr = computePrecodedSINRSubroutine(H,WTmp,nVar);
             SINRPerRE(:,:,idx) = sinr;
         end
     end
 else
-    % If the number of sc in BWP is less than codebook index set size
+    % If the number of csirs subcarriers in BWP is less than codebook 
+    % index set size, consider the precoding matrix as the page matrix
+    for idx = 1:csirsIndSubsLen
+        % Compute the SINR (linear) values per CSI-RS RE for all
+        % unrestricted precoding matrices
+        HTmp = H(idx,:,:);
+        sinr = computePrecodedSINRSubroutine(HTmp,codebook,nVar);
+        % Assign sinr [k x l x m] (size of codebookIdxSetSizes into 
+        % SINRPerRE slices because SINRPerRE(i,j,:,:,:) matches size(sinr) 
+        % for each i,j
+        SINRPerRE(idx,:) = sinr(:);
+    end
 end
-
 end
 
 %% Local Helper Fcn
@@ -52,7 +63,7 @@ if size(H,3) == 1
     diagTermPageT = pagetranspose(diagTerm);
     sumTerm = sum(absVSqr.*diagTermPageT,2);
     msee_i = squeeze(sumTerm); % msee of i-th stream
-else % If H is n-dim
+else % If H is n-dim, compute SINR values using H as page
     SSqrPageT = pagetranspose(SSqr); % page transpose this
     nVarVec = nVar*ones(1,size(W,2)); % create a vector to match SSqrPageT
     diagTerm = nVar./(SSqrPageT + nVarVec + eps); % eps to prevent divide by 0
