@@ -1,22 +1,23 @@
 function csiReport = EncodeCSI(carrier,csirs,Hest,nVar,csiFeedbackOpts)
 %EncodeCSI Prepares and encodes CSI
 
-switch csiFeedbackOpts.CSIReportConfig.Mode
+csiReportConfig = csiFeedbackOpts.CSIReportConfig;
+switch csiReportConfig.Mode
     case 'AUTOENCODER'
-        % net compression here
-        aen = createAutoencoder(csiFeedbackOpts);
+        % Using the encoder portion of the autoencoder to encode CSI
+        csiReport = encodeAutoencoder(carrier,Hest,nVar,csiFeedbackOpts);
     case 'RI-PMI-CQI'
-        % Using 3GPP TS 38.211/214 RI-PMI-CQI Selection
-        csiReport = selectCSI(carrier,csirs,Hest,nVar,csiFeedbackOpts);
+        % Using 3GPP TS 38.211/214 RI-PMI-CQI selection
+        csiReport = encodeRIPMICQI(carrier,csirs,Hest,nVar,csiFeedbackOpts);
     otherwise
         error('Invalid CSI Report Mode')
 end
 
 end
 
-%% Local Helper Fcn
-function csiReport = selectCSI(carrier,csirs,H,nVar,csiFeedbackOpts)
-%selectCSI Subroutine to run RI-PMI-CQI reporting
+%% Local Helper Fcns
+function csiReport = encodeRIPMICQI(carrier,csirs,H,nVar,csiFeedbackOpts)
+%encodeRIPMICQI Subroutine to encode RI-PMI-CQI reporting
 % Adjust noise if practical channel
 if ~csiFeedbackOpts.PerfectChannelEstimator
     % Empirical noise estimation error scaling from practical channel
@@ -48,25 +49,18 @@ csiReport.NSlot = CQIPMICompParams.Carrier.NSlot;
 
 end
 
-function aen = createAutoencoder(csiFeedbackOpts)
-%createAutoencoder Create autoencoder model based on the specified model
-%   name. 'Base' is the default model from MATLAB example
+function csiReport = encodeAutoencoder(carrier,Hest,nVar,csiFeedbackOpts)
+%selectCSIAutoencoder Encode CSI using autoencoder
 
-modelName = csiFeedbackOpts.CSIReportConfig.Autoencoder.ModelName;
-modelFileName = ['+Autoencoder\AvailableModels\',modelName,'.mat'];
+% Load the encoder body
+encNet  = csiFeedbackOpts.CSIReportConfig.Autoencoder.Encoder;
+aenOpts = csiFeedbackOpts.CSIReportConfig.Autoencoder.Options;
 
-if exist(modelFileName,'dir')
-    load('modelFileName','aen');
-    return
-end
+% Using the encoder body, do inference on the estimated channel response
+Hc = Autoencoder.Encode(encNet,Hest,aenOpts);
 
-switch modelName
-    case 'Base'
-        aen = Autoencoder.CreateModel.Base();
-    otherwise
-        error('Unknown Autoencoder model name')
-
-end
-
-
+% Output structure
+csiReport.H = Hc;
+csiReport.nVar = nVar;
+csiReport.NSlot = carrier.NSlot;
 end

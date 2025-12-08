@@ -4,33 +4,74 @@ function [modulation,targetCodeRate,precoder] = DecodeCSI(carrier,pdsch,...
 %   precoding matrix
 
 csiReportConfig = csiFeedbackOpts.CSIReportConfig;
-
 switch csiReportConfig.Mode
-    case 'RI-PMI-CQI'
-        % Map CSI to MCS
-        [modulation,targetCodeRate] = mapCSI2MCS(csiReportConfig.CQITable,csiReport);
-
-        precoder = PMISubband2PRGPrecodingMatrix(carrier,...
-            pdschX.PRGBundleSize,csiReportConfig,csiReport.Precoder);
-
     case 'AI CSI compression'
-        % Load network
-        [~,aenDecoder,aenOptions] = Autoencoder.LoadModel(csiFeedbackOpts);
+        % Using the decoder portion of the autoencoder to decode CSI
+        
 
-        % Decode CSI report using AEN decoder
-        HestGrid = Autoencoder.Decode(aenDecoder,csiReport.H,aenOptions);
-
-        % Replicate channel 
-
-
-
+    case 'RI-PMI-CQI'
+        % Using 3GPP TS 38.211/214 RI-PMI-CQI decoding routine
+        [modulation,targetCodeRate,precoder] = decodeRIPMICQI(...
+            csiReportConfig,csiReport,carrier,pdschX);
 end
 
 
 end
 
-%% Local Helper Fcn
-function [modu,tcr] = mapCSI2MCS(cqiTableNameInput,csiReport)
+%% Local Helper Fcns
+function [modulation,targetCodeRate,precoder] = decodeRIPMICQI(...
+    csiReportConfig,csiReport,carrier,pdschX)
+%decodeRIPMICQI Subroutine to decode CSI using RI-PMI-CQI
+
+% Map CSI to MCS
+[modulation,targetCodeRate] = mapCSI2MCS(csiReportConfig.CQITable,csiReport);
+
+% Map codebook-based precoding matrices from subbands to PRGs
+precoder = mapPMISubband2PRGPrecodingMatrix(carrier,...
+    pdschX.PRGBundleSize,csiReportConfig,csiReport.Precoder);
+
+end
+
+function [modulation,targetCodeRate,precoder] = decodeAutoencoder(...
+    csiFeedbackOpts,csiReport,carrier,pdsch,pdschX)
+%decodeAutoencoder Subroutine to decode CSI using the decoder portion of
+%   the autoencoder
+
+% Load the decoder body
+decNet  = csiFeedbackOpts.CSIReportConfig.Autoencoder.Decoder;
+aenOpts = csiFeedbackOpts.CSIReportConfig.Autoencoder.Options;
+
+% Using the decoder body, do inference on the channel matrix as the
+% codeword
+H = Autoencoder.Encode(decNet,csiReport.H,aenOpts);
+
+% Replicate channel matrix in the time domain to span 1
+% slot worth of symbols
+% Start by expanding a singleton dim in 2nd dim as placeholder and move 
+% nRx,nTx to 3rd & 4th dim respectively
+HTmp = permute(H,[1 4 2 3]); 
+H = repelem(HTmp,1,carrier.SymbolsPerSlot,1,1,1); % repeat numSymbol along 2nd dim
+
+% Compute PDSCH Tx parameters: modulation, target coderate and tx precoder
+
+
+end
+
+function [modulation,tcr,wtx] = computePDSCHTxParameters(carrier,pdsch,pdschX,Hest,nVar)
+
+
+end
+
+
+
+
+
+
+
+
+end
+
+function [modulation,tcr] = mapCSI2MCS(cqiTableNameInput,csiReport)
 
 % Configure MCS based on CQI
 cqi = csiReport.CQI(1,:); % Wideband
@@ -49,14 +90,15 @@ if isempty((thisTable)) || ~strcmpi(cqiTableName,cqiTableNameInput)
     thisTable = cqiTableObj.(['CQI',cqiTableName]);
 end
 
-modu = thisTable.Modulation(cqi+1); % add 1 due to 0-based index
+modulation = thisTable.Modulation(cqi+1); % add 1 due to 0-based index
 % Remove 'Out of Range' row
-modu = modu(~strcmpi(modu,'Out of Range'));
+modulation = modulation(~strcmpi(modulation,'Out of Range'));
 tcr  = thisTable.TargetCodeRate(cqi+1);
 end
 
-function wtx = PMISubband2PRGPrecodingMatrix(carrier,prgBundleSize,reportConfig,W)
-% Map codebook-based precoding matrices from subbands to PRGs
+function wtx = mapPMISubband2PRGPrecodingMatrix(carrier,prgBundleSize,reportConfig,W)
+%mapPMISubband2PRGPrecodingMatrix subroutine to map codebook-based 
+%   precoding matrices from subbands to corresponding PRGs
 
 if isempty(reportConfig.NSizeBWP)
     reportConfig.NSizeBWP = carrier.NSizeGrid;

@@ -15,9 +15,10 @@ if ~isempty(pdsch.NStartBWP) || ~isempty(pdsch.NSizeBWP) % if BWP specified in P
 end
 
 % Noise Variance and BLER Target
-nVar = 1e-10; % default noise power
-targetBLER = 0.1;
-if isscalar(varargin)
+if isempty(varargin)
+    nVar = 1e-10; % default noise power
+    targetBLER = 0.1;
+elseif isscalar(varargin)
     nVar = varargin{1};
     targetBLER = 0.1;
 else
@@ -47,7 +48,7 @@ end
 % Calculate SINR per RE
 HRE = permute(H,[3,4,1,2]); % Rearrange dim to [nRx x nTx x nREs x nSyms]
 HRE = reshape(HRE,numRx,numTx,[]); % Reshape to collapse numREs with numSyms
-WRE = reshape(W,numTx,1,[]);
+WRE = reshape(WRE,numTx,1,[]);
 SINRPerRE = CSIReporting.ComputePrecodedSINRPerRE(HRE,WRE,nVar);
 
 % Lookup wideband MCS, effective SINR and BLER per subband

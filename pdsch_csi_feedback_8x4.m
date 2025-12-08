@@ -29,7 +29,7 @@ clear
 clc
 simParams = struct();
 simParams.NFrames = 2; % Number of 10ms frames
-simParams.SNRIn = 10;
+simParams.SNRIn = -15:5:15;
 
 %% Simulation Toggles
 simParams.PerfectChannelEstimator = true;
@@ -181,8 +181,23 @@ switch upper(simParams.CSIReportConfig.Mode)
         end
         
     case 'AUTOENCODER'
-        %simParams.CSIReportConfig.Autoencoder = 'csiTrainedNetwork.mat';
-        simParams.CSIReportConfig.Autoencoder.ModelName = 'Base';
+        aenModelName = 'csiTrainedNetwork.mat';
+        if contains(aenModelName,'csiTrainedNetwork')
+            simParams.CSIReportConfig.Autoencoder.ModelName = aenModelName;
+            simParams.CSIReportConfig.Autoencoder.PretrainedNetwork = true;
+            % Load Autoencoder
+            [aen,aenOptions,encEndLayer] = Autoencoder.LoadPretrainedNetwork(simParams.CSIReportConfig);
+        else
+            simParams.CSIReportConfig.Autoencoder.ModelName = aenModelName;
+            simParams.CSIReportConfig.Autoencoder.PretrainedNetwork = false;
+            % Custom models to be implemented here
+            % ...
+        end
+        % Extract the encoder body
+        [csiEncoder,csiDecoder] = Autoencoder.SplitEncoderDecoder(aen,encEndLayer);
+        simParams.CSIReportConfig.Autoencoder.Encoder = csiEncoder;
+        simParams.CSIReportConfig.Autoencoder.Decoder = csiDecoder;
+        simParams.CSIReportConfig.Autoencoder.Options = aenOptions;
     otherwise
         simParams.CSIReportConfig.Mode = 'PERFECT CSI';
 end
@@ -314,7 +329,7 @@ for snrIdx = 1:length(simParams.SNRIn)
         % Get path gain of the channel using the channel clone
         [pathGains,~] = channelForPathGains();
         shannon(nslot+1) = calculateShannonCapacity(carrier,pathGains,nTx,...
-            nRx,simParams.SNRIn);
+            nRx,simParams.SNRIn(snrIdx));
 
         % Add AWGN to the received waveform
         noisepwr = N0*randn(size(rxWaveform),like=1i);
