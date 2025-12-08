@@ -49,7 +49,6 @@ for idx = uniquePRG
     WTmp = premute(V(:,1:numLayers),[2, 1, 3]);
     Wprg = WTmp/sqrt(numLayers); % normalize
 end
-
 end
 
 

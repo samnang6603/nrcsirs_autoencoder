@@ -55,19 +55,49 @@ H = repelem(HTmp,1,carrier.SymbolsPerSlot,1,1,1); % repeat numSymbol along 2nd d
 % Compute PDSCH Tx parameters: modulation, target coderate and tx precoder
 
 
+
 end
 
 function [modulation,tcr,wtx] = computePDSCHTxParameters(carrier,pdsch,pdschX,Hest,nVar)
+%computePDSCHTxParameters compute MCS and MIMO precoder
 
+% Get max rank based on Hest
+maxRank = min(size(Hest,[3,4]));
+
+% Allocate precoding matrix
+WTmp = cell(maxRank,1);
+
+% Allocate efficiency and mcsRank to NaN
+efficiency = NaN(maxRank,1);
+mcsRank = NaN(maxRank,2);
+
+% Allocate MCS information structure
+mcsInfo = repmat(struct,1,10);
+
+% Calculate SINR after precoding for each possible rank
+for rankIdx = 1:maxRank
+    % Perform SVD on the channel estimate
+    w = CSIReporting.ComputeSVDPrecoders(carrier,pdsch,Hest,pdschX.PRGBundleSize);
+
+    % Store the MIMO precoding matrix w
+    WTmp{rankIdx} = w;
+
+    % Update pdsch
+    pdsch.NumLayers = rankIdx;
+    pdsch.ReservedRE = [];
+    pdschX.XOverhead = 0;
+
+    % Calculate SINR and select the corresponding best MCS
+    [mcs,tmpInfo] = CSIReporting.SelectMCS(carrier,pdsch,pdschX,w,Hest,nVar);
+    mcsInfo(rankIdx) = tmpInfo;
+
+    % Get wideband MCS index
+    mcsWbIdx = mcs(1,:);
+
+    % Get number of codewords and replicate MCS rank
+    numCodewords = length(mcsWideband);
 
 end
-
-
-
-
-
-
-
 
 end
 
