@@ -102,7 +102,7 @@ disp(['Number of CSI-RS ports: ' num2str(simParams.CSIRS.NumCSIRSPorts) '.'])
 cdmLengths = getCSIRSCDMLengths(simParams.CSIRS);
 
 %% Channel Model Parameter Settings
-simParams.DelayProfile = 'TDL-B';   % 'CDL-' or 'TDL-'
+simParams.DelayProfile = 'TDL-E';   % 'CDL-' or 'TDL-'
 simParams.DelaySpread = 300e-9;     % s
 simParams.MaximumDopplerShift = 5;  % Hz
 
@@ -537,7 +537,7 @@ elseif thisSlotCSIReportIndex > 0
 end
 
 strtmp = join([infoToDisplay,csiFeedBackInfoStr,csirsInfoStr]);
-fprintf("(%5.2f%%) NSlot: #%2d: %s \n",100*(nslot+1)/TotalNumSlots,nslot,strtmp);
+fprintf("(%6.2f %%) NSlot: #%2d: %s \n",100*(nslot+1)/TotalNumSlots,nslot,strtmp);
 
 end
 
