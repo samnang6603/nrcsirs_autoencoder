@@ -5,10 +5,10 @@ csiReportConfig = csiFeedbackOpts.CSIReportConfig;
 switch csiReportConfig.Mode
     case 'AUTOENCODER'
         % Using the encoder portion of the autoencoder to encode CSI
-        csiReport = encodeAutoencoder(carrier,Hest,nVar,csiFeedbackOpts);
+        csiReport = encodeViaAutoencoder(carrier,Hest,nVar,csiFeedbackOpts);
     case 'RI-PMI-CQI'
         % Using 3GPP TS 38.211/214 RI-PMI-CQI selection
-        csiReport = encodeRIPMICQI(carrier,csirs,Hest,nVar,csiFeedbackOpts);
+        csiReport = encodeViaRIPMICQI(carrier,csirs,Hest,nVar,csiFeedbackOpts);
     otherwise
         error('Invalid CSI Report Mode')
 end
@@ -16,7 +16,7 @@ end
 end
 
 %% Local Helper Fcns
-function csiReport = encodeRIPMICQI(carrier,csirs,H,nVar,csiFeedbackOpts)
+function csiReport = encodeViaRIPMICQI(carrier,csirs,H,nVar,csiFeedbackOpts)
 %encodeRIPMICQI Subroutine to encode RI-PMI-CQI reporting
 % Adjust noise if practical channel
 if ~csiFeedbackOpts.PerfectChannelEstimator
@@ -39,7 +39,7 @@ end
 CQIPMICompParams.ThisRank = ri;
 [cqi,pmi,~,pmiInfo] = CSIReporting.SelectCQI(CQIPMICompParams);
 
-% Aggreate CSI results
+% Aggregate CSI results
 csiReport = struct();
 csiReport.CQI = cqi;
 csiReport.RI  = ri;
@@ -49,7 +49,7 @@ csiReport.NSlot = CQIPMICompParams.Carrier.NSlot;
 
 end
 
-function csiReport = encodeAutoencoder(carrier,Hest,nVar,csiFeedbackOpts)
+function csiReport = encodeViaAutoencoder(carrier,Hest,nVar,csiFeedbackOpts)
 %selectCSIAutoencoder Encode CSI using autoencoder
 
 % Load the encoder body

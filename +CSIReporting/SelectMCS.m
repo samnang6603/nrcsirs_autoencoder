@@ -39,17 +39,17 @@ W = permute(W,[2, 1, 3]);
 
 % If W has multiple precoding group, map each precoding matrix to its
 % respective REs to calculate the SINR per RE
-[numSubcarriers,numSyms,numPRGs] = size(W);
+[numSubcarriers,numSyms,numPRGs] = size(H);
 if numPRGs > 1
-    WRE = mapMIMOPrecoder2RE(W,numSubcarriers,numSyms,...
+    W = mapMIMOPrecoder2RE(W,numSubcarriers,numSyms,...
         pdschX.PRGBundleSize,NStartBWP,NSizeBWP);
 end
 
 % Calculate SINR per RE
 HRE = permute(H,[3,4,1,2]); % Rearrange dim to [nRx x nTx x nREs x nSyms]
 HRE = reshape(HRE,numRx,numTx,[]); % Reshape to collapse numREs with numSyms
-WRE = reshape(WRE,numTx,1,[]);
-SINRPerRE = CSIReporting.ComputePrecodedSINRPerRE(HRE,WRE,nVar);
+WRE = W(:,:,:);
+SINRPerRE = computePrecodedSINRSubroutine(HRE,WRE,nVar);
 
 % Lookup wideband MCS, effective SINR and BLER per subband
 [mcsIdx,mcsTableRow,BLER] = L2SMapping.SelectMCSFromSystemLevel(carrier,...
@@ -119,3 +119,34 @@ sbInfo.NumSubbands = numSB;
 sbInfo.SubbandSizes = sbSizes;
 end
 
+function sinr = computePrecodedSINRSubroutine(H,W,nVar)
+%computePrecodedSINRSubroutine subroutine to compute precoded SINR
+
+% Reference
+% nrPrecodedSINR(H,nVar,W) from Mathworks
+% Li, Ping, et al. "On the Distribution of SINR for the MMSE MIMO Receiver 
+% and Performance Analysis." IEEE Transactions on Information Theory, 
+% vol. 52, no. 1, 1 Jan. 2006, pp. 271–286, 
+% https://doi.org/10.1109/tit.2005.860466. Accessed 23 Sept. 2023.
+
+R = pagemtimes(H,W);
+[~,S,V] = pagesvd(R,'econ','vector');
+
+SSqr = S.*S;
+absVSqr = abs(V).^2;
+
+% If H is 2D, compute SINR values using W as page
+if size(H,3) == 1
+    diagTerm = nVar./(nVar + SSqr + eps); % eps to prevent divide by 0
+    diagTermPageT = pagetranspose(diagTerm);
+    sumTerm = sum(absVSqr.*diagTermPageT,2);
+    msee_i = squeeze(sumTerm); % msee of i-th stream
+else % If H is n-dim, compute SINR values using H as page
+    SSqrPageT = pagetranspose(SSqr); % page transpose this
+    nVarVec = nVar*ones(1,size(W,2)); % create a vector to match SSqrPageT
+    diagTerm = nVar./(SSqrPageT + nVarVec + eps); % eps to prevent divide by 0
+    sumTerm = sum(absVSqr.*diagTerm,2);
+    msee_i = permute(sumTerm,[3, 1, 2]); % msee of i-th stream
+end
+sinr = 1./msee_i - 1;
+end

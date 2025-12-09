@@ -33,9 +33,8 @@ numLayers = pdsch.NumLayers;
 Wprg = zeros(numLayers,nTx,prgInfo.NPRG);
 Hprg = zeros(nRx,nTx,prgInfo.NPRG);
 pdschPRGs = prgInfo.PRGSet(gridRBSet + 1);
-uniquePRG = unique(pdschPRGs);
 
-for idx = uniquePRG
+for idx = unique(pdschPRGs).'
     % Take the average of the channel estimate across all allocated RBs
     % except zero estimates for incomplete PRGs or missing information
     Hprb = HestRB(:,:,pdschPRGs == idx);
@@ -46,8 +45,8 @@ for idx = uniquePRG
     % Do SVD and extract only the right singular vectors matrix V due to
     % transmission side
     [~,~,V] = svd(HprgTmp); % right singular vectors matrix
-    WTmp = premute(V(:,1:numLayers),[2, 1, 3]);
-    Wprg = WTmp/sqrt(numLayers); % normalize
+    WTmp = permute(V(:,1:numLayers),[2, 1, 3]);
+    Wprg(:,:,idx) = WTmp/sqrt(numLayers); % normalize
 end
 end
 

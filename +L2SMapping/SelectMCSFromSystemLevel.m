@@ -23,7 +23,7 @@ if any(nanIdx,'all')
 end
 
 % Extract the SINR from the NaN indices
-SINRs = SINRs(~any(nanIdx),:);
+SINRs = SINRs(~any(nanIdx,2),:);
 
 % Extract modulation orders and target code rates from MCS table
 mcsTable = extractMCSTable(mcsTableName);
@@ -53,7 +53,7 @@ if isempty(tb)
         lut = [             tmpTb.MCSIndex,...
                                   tmpTb.Qm,...
                (tmpTb.TargetCodeRate)*1024,...
-                   tmpTb.SpectralEfficieny];
+                  tmpTb.SpectralEfficiency];
 
         % Select from LUT array
         tcr = lut(:,3);

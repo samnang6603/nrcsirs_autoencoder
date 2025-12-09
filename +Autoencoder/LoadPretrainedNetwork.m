@@ -4,7 +4,11 @@ function [net,autoEncOpt,encEndLayer] = LoadPretrainedNetwork(csiReportConfig)
 %   https://www.mathworks.com/help/releases/R2025a/5g/ug/nr-pdsch-throughput-using-csi-feedback.html
 
 modelName = csiReportConfig.Autoencoder.ModelName;
-modelFilePath = '+Autoencoder\Pretrained_Models\';
+if ispc
+    modelFilePath = '+Autoencoder\Pretrained_Models\';
+else
+    modelFilePath = '+Autoencoder/Pretrained_Models/';
+end
 if isfolder(modelFilePath)
     load([modelFilePath,modelName],'net','autoEncOpt')
 else

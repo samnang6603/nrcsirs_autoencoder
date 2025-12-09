@@ -11,6 +11,7 @@ These are the premises of this experiment:
 4. Uses both Clustered Delay Line (CDL) or Tapped Delay Line (TDL)
 
 %}
+
 % Author: Samnangdona An
 % Date: 09/02/2025
 % References: 
@@ -29,7 +30,7 @@ clear
 clc
 simParams = struct();
 simParams.NFrames = 2; % Number of 10ms frames
-simParams.SNRIn = -15:5:15;
+simParams.SNRIn = 10;
 
 %% Simulation Toggles
 simParams.PerfectChannelEstimator = true;
@@ -66,14 +67,15 @@ simParams.PDSCH.DMRS.DMRSEnhancedR18 = false;
 simParams.PDSCHExtension.RedundancySequence = 0;
 
 % PDSCH MCS
-simParams.PDSCHExtension.MCSTables = nrPDSCHMCSTables;
+simParams.PDSCHExtension.AllMCSTables = nrPDSCHMCSTables;
 
 % LDPC
 % Table 5.1.3.1-(1/2/3) TS 38.214
 % Picking TargetCodeRate = 490/1024 Intial choice
 % This rate is from either Table-1 MCS#13, Table-2 MCS#7, Table-3 MCS#18
 MCSIndex = 13;
-mcsTable = simParams.PDSCHExtension.MCSTables.QAM64Table;
+mcsTable = simParams.PDSCHExtension.AllMCSTables.QAM64Table;
+simParams.PDSCHExtension.MCSTable = 'Table1';
 simParams.LDPC.TargetCodeRate = mcsTable.TargetCodeRate(mcsTable.MCSIndex == MCSIndex); 
 simParams.LDPC.DecodingAlgorithm = 'Normalized min-sum';
 simParams.LDPC.MaximumLDPCIterationCount = 6;
@@ -100,7 +102,7 @@ disp(['Number of CSI-RS ports: ' num2str(simParams.CSIRS.NumCSIRSPorts) '.'])
 cdmLengths = getCSIRSCDMLengths(simParams.CSIRS);
 
 %% Channel Model Parameter Settings
-simParams.DelayProfile = 'TDL-A';   % 'CDL-' or 'TDL-'
+simParams.DelayProfile = 'TDL-B';   % 'CDL-' or 'TDL-'
 simParams.DelaySpread = 300e-9;     % s
 simParams.MaximumDopplerShift = 5;  % Hz
 
@@ -151,7 +153,7 @@ channelForPathGains.ChannelResponseOutput = 'path-gains';
 
 %% CSI Report
 simParams.CSIReportConfig = struct();
-simParams.CSIReportConfig.Mode = 'RI-PMI-CQI';
+simParams.CSIReportConfig.Mode = 'AUTOENCODER';
 simParams.CSIReportConfig.Period = [5,0];
 
 switch upper(simParams.CSIReportConfig.Mode)
@@ -216,7 +218,6 @@ CSIReportPerSNR = {};
 ThisSlotStatus = struct();
 
 for snrIdx = 1:length(simParams.SNRIn)
-
     % SNR Index
     fprintf('\nSimulating (%dx%d) for SNR = %.2fdB (%s)\n',...
         simParams.NumTxAntennas,simParams.NumRxAntennas,simParams.SNRIn(snrIdx),...
@@ -343,6 +344,7 @@ for snrIdx = 1:length(simParams.SNRIn)
         % Demodulate OFDM waveform
         rxDownlinkGrid = nrOFDMDemodulate(carrier,rxWaveform);
         [nRE,nSym,~] = size(rxDownlinkGrid);
+
         % Pad zero to compensate for channel timing offset shortening of
         % vector
         if nSym < carrier.SymbolsPerSlot
@@ -430,14 +432,13 @@ for snrIdx = 1:length(simParams.SNRIn)
 
         % Display slot status info
         displaySlotTransmissionStatus(ThisSlotStatus,NSlots,carrier);
-
     end
 
     % Store CSI Report for each SNR
     CSIReportPerSNR{snrIdx} = csiReports;  %#ok<SAGROW>
     
     % Display throughput for each SNR
-    displayThroughput(simParamsTmp,snrIdx,simThroughput,shannon);
+    displayThroughput(simParamsTmp,snrIdx,simThroughput,channel,shannon);
 
 end
 
@@ -540,13 +541,13 @@ fprintf("(%5.2f%%) NSlot: #%2d: %s \n",100*(nslot+1)/TotalNumSlots,nslot,strtmp)
 
 end
 
-function displayThroughput(simParams,snrIdx,throughput,shannon)
+function displayThroughput(simParams,snrIdx,throughput,channel,shannon)
 
 frames = simParams.NFrames;
 snrVal = simParams.SNRIn(snrIdx);
 mbps = (throughput(snrIdx)/(simParams.NFrames*10e-3))/1e6;
 
-fprintf('\nThroughput at SNR = %.2fdB for %d frames: %.3f Mbps\n',snrVal,frames,mbps);
+fprintf('\nThroughput at SNR = %.2fdB for %d frames: %.3f Mbps (%s)\n',snrVal,frames,mbps,channel.DelayProfile);
 fprintf('The average Shannon capacity (ergodic Shannon limit) of this link: %.3f Mbps\n',mean(shannon)/1e6);
 
 end

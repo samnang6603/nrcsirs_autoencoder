@@ -1,5 +1,5 @@
 function SINRPerRE = ComputePrecodedSINRPerRE(H,codebook,codebookIdxSetSizes,nVar,k,numLayers)
-%
+%ComputePrecodedSINRPerRE compute precoded SINR per RE
 
 % Get the number of sc in BWP
 csirsIndSubsLen = length(k);
