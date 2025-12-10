@@ -103,6 +103,8 @@ channel.NumTransmitAntennas = 2;
 channel.NumTransmitAntennas = 2;
 channel.ChannelFiltering = false;           % No filtering
 
+fprintf("Generate %s channel response \n",channel.DelayProfile);
+
 %% Autoencoder Options
 aenOptions.DataDomain = 'Frequency-Spatial';
 aenOptions.TruncationFactor = 10;

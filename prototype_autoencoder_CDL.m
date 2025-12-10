@@ -127,6 +127,8 @@ channel.TransmitAntennaArray.Size = [1 1 2 1 1];
 channel.ReceiveAntennaArray.Size = [1 1 2 1 1];
 channel.ChannelFiltering = false;           % No filtering
 
+fprintf("Generate %s channel response \n",channel.DelayProfile);
+
 %% Autoencoder Options
 aenOptions.DataDomain = 'Frequency-Spatial';
 aenOptions.TruncationFactor = 10;

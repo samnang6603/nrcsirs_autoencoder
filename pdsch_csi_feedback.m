@@ -482,7 +482,7 @@ frames = simParams.NFrames;
 snrVal = simParams.SNRIn(snrIdx);
 mbps = (throughput(snrIdx)/(simParams.NFrames*10e-3))/1e6;
 
-fprintf('\nThroughput at SNR = %.1f dB for %d frames: %.3f Mbps\n',snrVal,frames,mbps);
+fprintf('\nThroughput at SNR = %.2f dB for %d frames: %.3f Mbps\n',snrVal,frames,mbps);
 
 end
 
